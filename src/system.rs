@@ -17,8 +17,6 @@ struct Regs {
     t : u32,
 }
 
-use std::num::Wrapping;
-
 const FLAG_ZERO : u8 = 1 << 7;
 const FLAG_N : u8 = 1 << 6;
 const FLAG_HALF_CARRY : u8 = 1 << 5;
@@ -45,20 +43,13 @@ impl Regs {
     }
 }
 
-pub struct  CPU {
-    regs : Regs,
-}
-
-impl CPU {
-    pub fn new() -> CPU {
-        CPU {
-            regs: Regs::new()
-        }
-    }
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum Register {
+    A, B, C, D, E, H, L, F, PC, SP, LT
 }
 
 pub struct SystemOnChip {
-    cpu: CPU,
+    regs: Regs,
     // Between reset and the first read from 0x0100, then
     // 0x0000 - 0x0100 is mapped to bios.
     pub read_from_bios: bool,
@@ -68,11 +59,6 @@ pub struct SystemOnChip {
     memory_zero: [u8; 0xFFFF - 0xFF80],
     cart: Vec<u8>,
     bios: [u8; 256]
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-enum Register {
-    A, B, C, D, E, H, L, F, PC, SP, LT
 }
 
 impl SystemOnChip {
@@ -98,15 +84,15 @@ impl SystemOnChip {
 
     fn read_r8(&self, r: Register) -> u8 {
         match r {
-            Register::A => self.cpu.regs.a,
-            Register::B => self.cpu.regs.b,
-            Register::C => self.cpu.regs.c,
-            Register::D => self.cpu.regs.d,
-            Register::E => self.cpu.regs.e,
-            Register::F => self.cpu.regs.f,
-            Register::H => self.cpu.regs.h,
-            Register::L => self.cpu.regs.l,
-            Register::LT => self.cpu.regs.lt,
+            Register::A => self.regs.a,
+            Register::B => self.regs.b,
+            Register::C => self.regs.c,
+            Register::D => self.regs.d,
+            Register::E => self.regs.e,
+            Register::F => self.regs.f,
+            Register::H => self.regs.h,
+            Register::L => self.regs.l,
+            Register::LT => self.regs.lt,
             _ => {
                 panic!();
             }
@@ -115,8 +101,8 @@ impl SystemOnChip {
 
     fn read_r16(&self, r: Register) -> u16 {
         match r {
-            Register::SP => self.cpu.regs.sp,
-            Register::PC => self.cpu.regs.pc,
+            Register::SP => self.regs.sp,
+            Register::PC => self.regs.pc,
             _ => {
                 // 8 bits
                 panic!();
@@ -134,15 +120,15 @@ impl SystemOnChip {
 
     fn write_r8(&mut self, r: Register, v: u8) -> () {
         match r {
-            Register::A => self.cpu.regs.a = v,
-            Register::B => self.cpu.regs.b = v,
-            Register::C => self.cpu.regs.c = v,
-            Register::D => self.cpu.regs.d = v,
-            Register::E => self.cpu.regs.e = v,
-            Register::F => self.cpu.regs.f = v,
-            Register::H => self.cpu.regs.h = v,
-            Register::L => self.cpu.regs.l = v,
-            Register::LT => self.cpu.regs.lt = v,
+            Register::A => self.regs.a = v,
+            Register::B => self.regs.b = v,
+            Register::C => self.regs.c = v,
+            Register::D => self.regs.d = v,
+            Register::E => self.regs.e = v,
+            Register::F => self.regs.f = v,
+            Register::H => self.regs.h = v,
+            Register::L => self.regs.l = v,
+            Register::LT => self.regs.lt = v,
             _ => {
                 // 16 bits register
                 panic!();
@@ -152,8 +138,8 @@ impl SystemOnChip {
 
     fn write_r16(&mut self, r: Register, v: u16) -> () {
         match r {
-            Register::SP => self.cpu.regs.sp = v,
-            Register::PC => self.cpu.regs.pc = v,
+            Register::SP => self.regs.sp = v,
+            Register::PC => self.regs.pc = v,
             _ => {
                 // 8 bits
                 panic!();
@@ -567,7 +553,7 @@ impl SystemOnChip {
         let relative_addr = self.read_u8_pc() as i8;
 
         // FIXME: Weird conversion to add relative_addr to pc.
-        // self.cpu.regs.pc += relative_addr;
+        // self.regs.pc += relative_addr;
         let addr = (self.read_r16(Register::PC) as i16) + (relative_addr as i16);
         self.write_r16(Register::PC, addr as u16);
         self.set_proc_clock(8);
@@ -1370,31 +1356,12 @@ impl SystemOnChip {
     // dispatch
     pub fn new() -> SystemOnChip {
         SystemOnChip {
-            cpu: CPU::new(),
+            regs: Regs::new(),
             read_from_bios: true,
             memory_zero: [0; 0xFFFF - 0xFF80],
             cart: Vec::new(),
             bios: [0; 256], // 0 is nop
         }
-    }
-
-    pub fn reset(&mut self) -> () {
-        self.cpu.regs.a = 0;
-        self.cpu.regs.b = 0;
-        self.cpu.regs.c = 0;
-        self.cpu.regs.d = 0;
-        self.cpu.regs.e = 0;
-        self.cpu.regs.h = 0;
-        self.cpu.regs.l = 0;
-        self.cpu.regs.f = 0;
-        self.cpu.regs.pc = 0;
-        self.cpu.regs.sp = 0;
-        self.cpu.regs.lt = 0;
-        self.cpu.regs.t = 0;
-
-        self.read_from_bios = true;
-        // FIXME: Fill memory_zero.
-        self.cart.clear();
     }
 
     pub fn load_cart(&mut self, cart: &Vec<u8>) {
@@ -1506,11 +1473,11 @@ impl SystemOnChip {
                 unimplemented!("op 0x{:02X?} at 0x{:04X?}", op, pc);
             }
         }
-        if self.cpu.regs.lt == 0 {
+        if self.regs.lt == 0 {
             unimplemented!("op 0x{:02X?} at 0x{:04X?} doesn't set lt.", op, pc);
         }
-        self.cpu.regs.t += self.cpu.regs.lt as u32;
-        self.cpu.regs.lt = 0;
+        self.regs.t += self.regs.lt as u32;
+        self.regs.lt = 0;
     }
 
     // debug functions

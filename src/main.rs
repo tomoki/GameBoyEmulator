@@ -25,8 +25,6 @@ fn main() {
     let mut soc = system::SystemOnChip::new();
 
     if args.len() >= 2 {
-        soc.reset();
-
         let cartridge_filename = &args[1];
         let mut cartridge_data : Vec<u8> = Vec::new();
 
