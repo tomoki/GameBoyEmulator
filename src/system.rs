@@ -549,14 +549,7 @@ impl SystemOnChip {
     // CPU Clock: 8
     // Bytes: 2
     fn jr_r8(&mut self) -> () {
-        // relative_addr is signed.
-        let relative_addr = self.read_u8_pc() as i8;
-
-        // FIXME: Weird conversion to add relative_addr to pc.
-        // self.regs.pc += relative_addr;
-        let addr = (self.read_r16(Register::PC) as i16) + (relative_addr as i16);
-        self.write_r16(Register::PC, addr as u16);
-        self.set_proc_clock(8);
+        self.jr_pred_r8(true);
     }
 
     // 0x1A
