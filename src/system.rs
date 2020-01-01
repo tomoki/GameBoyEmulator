@@ -55,6 +55,14 @@ enum GpuMode {
     VerticalBlank,         // number 1
 }
 
+const VRAM_START : u16 = 0x8000;
+const VRAM_END : u16 = 0x9FFF;
+const MEMORY_ZERO_START : u16 = 0xFF80;
+const MEMORY_ZERO_END : u16 = 0xFFFF;
+
+const VRAM_SIZE : u16 = VRAM_END - VRAM_START + 1;
+const MEMORY_ZERO_SIZE : u16 = MEMORY_ZERO_END - MEMORY_ZERO_START + 1;
+
 pub struct SystemOnChip {
     regs: Regs,
     // Between reset and the first read from 0x0100, then
@@ -63,11 +71,13 @@ pub struct SystemOnChip {
 
     // memory
     // 0xFF80 - 0xFFFF
-    memory_zero: [u8; 0xFFFF - 0xFF80],
+    memory_zero: [u8; MEMORY_ZERO_SIZE as usize],
     cart: Vec<u8>,
     bios: [u8; 256],
 
     // GPU
+    // 0x8000 - 0x9FFF
+    vram: [u8; VRAM_SIZE as usize],
     gpu_screen: [u8; 160 * 144 * 4],
     gpu_mode: GpuMode,
     gpu_mode_clock: u16,
@@ -1295,13 +1305,17 @@ impl SystemOnChip {
         match addr & 0xF000 {
             0x0000 => {
             },
+            0x8000 | 0x9000 => {
+                // VRAM
+                self.vram[(addr - VRAM_START) as usize] = val;
+            }
             0xF000 => {
                 match addr & 0x0F00 {
                     0x0F00 => {
                         // zero page or memory-mapped IO
-                        if addr >= 0xFF80 {
+                        if addr >= MEMORY_ZERO_START {
                             // zero page
-                            self.memory_zero[(addr - 0xFF80) as usize] = val
+                            self.memory_zero[(addr - MEMORY_ZERO_START) as usize] = val
                         } else {
                             match addr {
                                 // NR 11
@@ -1368,10 +1382,11 @@ impl SystemOnChip {
         SystemOnChip {
             regs: Regs::new(),
             read_from_bios: true,
-            memory_zero: [0; 0xFFFF - 0xFF80],
+            memory_zero: [0; MEMORY_ZERO_SIZE as usize],
             cart: Vec::new(),
             bios: [0; 256], // 0 is nop,
             // GPU
+            vram: [0; VRAM_SIZE as usize],
             gpu_screen: [0; 160 * 144 * 4],
             gpu_mode: GpuMode::ScanlineAccessingOAM,
             gpu_mode_clock: 0,
@@ -1503,6 +1518,11 @@ impl SystemOnChip {
         //    => ScanlineAccessingVRAM
         //    => HorizontalBlank) * 143
         // => VerticalBlank
+
+        // ScanlineAccessingOAM  -> 80 cycles
+        // ScanlineAccessingVRAM -> 172 cycles
+        // HorizontalBlank       -> 204 cycles
+        // VerticalBlank         -> 4560 cycles
         match self.gpu_mode {
             GpuMode::ScanlineAccessingOAM => {
                 if self.gpu_mode_clock >= 80 {
