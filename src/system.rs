@@ -48,6 +48,13 @@ enum Register {
     A, B, C, D, E, H, L, F, PC, SP, LT
 }
 
+enum GpuMode {
+    ScanlineAccessingOAM,  // number 2
+    ScanlineAccessingVRAM, // number 3
+    HorizontalBlank,       // number 0
+    VerticalBlank,         // number 1
+}
+
 pub struct SystemOnChip {
     regs: Regs,
     // Between reset and the first read from 0x0100, then
@@ -58,7 +65,13 @@ pub struct SystemOnChip {
     // 0xFF80 - 0xFFFF
     memory_zero: [u8; 0xFFFF - 0xFF80],
     cart: Vec<u8>,
-    bios: [u8; 256]
+    bios: [u8; 256],
+
+    // GPU
+    gpu_screen: [u8; 160 * 144 * 4],
+    gpu_mode: GpuMode,
+    gpu_mode_clock: u16,
+    gpu_line: u16,
 }
 
 impl SystemOnChip {
@@ -154,6 +167,10 @@ impl SystemOnChip {
 
    fn set_proc_clock(&mut self, clock : u8) -> () {
         self.write_r8(Register::LT, clock)
+    }
+
+    fn get_proc_clock(&self) -> u8 {
+        self.read_r8(Register::LT)
     }
 
     fn push_u8(&mut self, val: u8) -> () {
@@ -1353,7 +1370,12 @@ impl SystemOnChip {
             read_from_bios: true,
             memory_zero: [0; 0xFFFF - 0xFF80],
             cart: Vec::new(),
-            bios: [0; 256], // 0 is nop
+            bios: [0; 256], // 0 is nop,
+            // GPU
+            gpu_screen: [0; 160 * 144 * 4],
+            gpu_mode: GpuMode::ScanlineAccessingOAM,
+            gpu_mode_clock: 0,
+            gpu_line: 0,
         }
     }
 
@@ -1371,7 +1393,9 @@ impl SystemOnChip {
         }
     }
 
-    pub fn dispatch(&mut self) -> () {
+    fn dispatch(&mut self) -> () {
+        assert_eq!(self.get_proc_clock(), 0);
+
         let pc = self.read_r16(Register::PC);
         let op = self.read_u8_pc();
 
@@ -1466,11 +1490,69 @@ impl SystemOnChip {
                 unimplemented!("op 0x{:02X?} at 0x{:04X?}", op, pc);
             }
         }
-        if self.regs.lt == 0 {
+        if self.get_proc_clock() == 0 {
             unimplemented!("op 0x{:02X?} at 0x{:04X?} doesn't set lt.", op, pc);
         }
         self.regs.t += self.regs.lt as u32;
-        self.regs.lt = 0;
+    }
+
+    fn gpu_step(&mut self, c: u8) {
+        self.gpu_mode_clock += c as u16;
+
+        // (ScanlineAccessingOAM
+        //    => ScanlineAccessingVRAM
+        //    => HorizontalBlank) * 143
+        // => VerticalBlank
+        match self.gpu_mode {
+            GpuMode::ScanlineAccessingOAM => {
+                if self.gpu_mode_clock >= 80 {
+                    self.gpu_mode_clock -= 80;
+                    self.gpu_mode = GpuMode::ScanlineAccessingVRAM;
+                }
+            }
+            GpuMode::ScanlineAccessingVRAM => {
+                if self.gpu_mode_clock >= 172 {
+                    self.gpu_mode_clock -= 172;
+                    self.gpu_mode = GpuMode::HorizontalBlank;
+                }
+
+            }
+            GpuMode::HorizontalBlank => {
+                if self.gpu_mode_clock >= 204 {
+                    self.gpu_mode_clock -= 204;
+                    self.gpu_line += 1;
+
+                    if self.gpu_line == 143 {
+                        // Go to VBlank
+                        self.gpu_mode = GpuMode::VerticalBlank;
+                    } else {
+                        self.gpu_mode = GpuMode::ScanlineAccessingOAM;
+                    }
+                }
+            }
+            // 4560 cycles for 10 lines.
+            GpuMode::VerticalBlank => {
+                if self.gpu_mode_clock >= 456 {
+                    self.gpu_mode_clock -= 456;
+                    self.gpu_line += 1;
+
+                    // 154 = 143 + 10?
+                    if self.gpu_line >= 154 {
+                        self.gpu_mode = GpuMode::ScanlineAccessingOAM;
+                        self.gpu_line = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn step(&mut self) -> () {
+        self.dispatch();
+
+        let cyclespent = self.get_proc_clock();
+        self.set_proc_clock(0);
+
+        self.gpu_step(cyclespent);
     }
 
     // debug functions

@@ -50,7 +50,7 @@ fn main() {
         }
 
         loop {
-            soc.dispatch();
+            soc.step();
         }
 
     } else {
