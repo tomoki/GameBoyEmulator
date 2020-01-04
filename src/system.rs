@@ -1,3 +1,17 @@
+
+// Helper functions
+// Expand u8 to u16, but for signed operations if the first bit is 1
+// then fill the first byte with 1.
+// 0xxxxxxx -> 000000000xxxxxxx
+// 1xxxxxxx -> 111111111xxxxxxx
+fn expand_to_u16_retaining_sign(u : u8) -> u16 {
+    if u & (1 << 7) != 0 {
+        (u as u16) | 0xFF00
+    } else {
+        u as u16
+    }
+}
+
 struct Regs {
     a: u8,
     b: u8,
@@ -57,10 +71,13 @@ enum GpuMode {
 
 const VRAM_START : u16 = 0x8000;
 const VRAM_END : u16 = 0x9FFF;
+const MAPPED_IO_START: u16 = 0xFF00;
+const MAPPED_IO_END : u16 = 0xFF79;
 const MEMORY_ZERO_START : u16 = 0xFF80;
 const MEMORY_ZERO_END : u16 = 0xFFFF;
 
 const VRAM_SIZE : u16 = VRAM_END - VRAM_START + 1;
+const MAPPED_IO_SIZE : u16 = MAPPED_IO_END - MAPPED_IO_START + 1;
 const MEMORY_ZERO_SIZE : u16 = MEMORY_ZERO_END - MEMORY_ZERO_START + 1;
 
 pub struct SystemOnChip {
@@ -70,18 +87,20 @@ pub struct SystemOnChip {
     pub read_from_bios: bool,
 
     // memory
+    // 0x8000 - 0x9FFF
+    vram: [u8; VRAM_SIZE as usize],
+    // 0xFF00 - 0xFF79
+    mapped_io: [u8; MAPPED_IO_SIZE as usize],
     // 0xFF80 - 0xFFFF
     memory_zero: [u8; MEMORY_ZERO_SIZE as usize],
     cart: Vec<u8>,
     bios: [u8; 256],
 
     // GPU
-    // 0x8000 - 0x9FFF
-    vram: [u8; VRAM_SIZE as usize],
-    gpu_screen: [u8; 160 * 144 * 4],
+    gpu_screen: [u8; 160 * 144],
     gpu_mode: GpuMode,
     gpu_mode_clock: u16,
-    gpu_line: u16,
+    gpu_line: u8,
 }
 
 impl SystemOnChip {
@@ -295,12 +314,14 @@ impl SystemOnChip {
     // Bytes: 2
     fn rl_x(&mut self, x: Register) -> () {
         let n = self.read_r8(x);
+        let old_carry_flag = self.flag_is_set(FLAG_CARRY);
+
         self.flag_set(FLAG_ZERO, n == 0);
         self.flag_set(FLAG_N, false);
         self.flag_set(FLAG_HALF_CARRY, false);
         self.flag_set(FLAG_CARRY, (n & (1 << 7)) != 0);
 
-        self.write_r8(x, (n << 1) | ((n >> 7) & 1));
+        self.write_r8(x, (n << 1) | (if old_carry_flag { 1 } else { 0 }));
     }
 
     // LD A, (XY)
@@ -375,11 +396,7 @@ impl SystemOnChip {
         if pred {
             // Note that as u16 add 0 to the head, but as relative_addr is signed,
             // we manually add 1 if it means negative value.
-            let relative_addr_16 = if relative_addr & (1 << 7) != 0 {
-                (relative_addr as u16) | 0xFF00
-            } else {
-                relative_addr as u16
-            };
+            let relative_addr_16 = expand_to_u16_retaining_sign(relative_addr);
             let addr = self.read_r16(Register::PC).wrapping_add(relative_addr_16);
             self.write_r16(Register::PC, addr);
             self.set_proc_clock(12);
@@ -395,6 +412,7 @@ impl SystemOnChip {
     fn sub_x(&mut self, r: Register) -> () {
         let n = self.read_r8(Register::A);
         let o = self.read_r8(r);
+        self.write_r8(Register::A, n.wrapping_sub(o));
 
         // FIXME: Use 2 complement?
         self.flag_set(FLAG_ZERO, n == o);
@@ -1205,7 +1223,7 @@ impl SystemOnChip {
     }
 
     // Memory instructions
-    fn rb(&mut self, addr: u16) -> u8 {
+    fn rb(&self, addr: u16) -> u8 {
         match addr & 0xF000 {
             0x0000 => {
                 if self.read_from_bios && addr < 0x0100 {
@@ -1214,6 +1232,16 @@ impl SystemOnChip {
                     // read from cart
                     self.cart[addr as usize]
                 }
+            },
+            0x8000 | 0x9000 => {
+                // VRAM
+                // 0x8000 - 0x87FF | Tile set #1   0 - 127
+                // 0x8800 - 0x8FFF | Tile set #1 128 - 255
+                //                 | Tile set #0  -1 - -128
+                // 0x9000 - 0x97FF | Tile set #0   0 - 127
+                // 0x9800 - 0x9BFF | Tile map #0
+                // 0x9C00 - 0x9FFF | Tile map #1
+                self.vram[(addr - VRAM_START) as usize]
             },
             0xF000 => {
                 match addr & 0x0F00 {
@@ -1259,17 +1287,15 @@ impl SystemOnChip {
                                 }
                                 // LCDC
                                 0xFF40 => {
-                                    0
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize]
                                 }
                                 // SCY
                                 0xFF42 => {
-                                    0
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize]
                                 },
                                 // LY
                                 0xFF44 => {
-                                    // FIXME: Make it always v-blank for BIOS.
-                                    // See instructions 0x0064-0068 in BIOS.
-                                    144
+                                    self.gpu_line
                                 },
                                 // BGP
                                 0xFF47 => {
@@ -1344,9 +1370,11 @@ impl SystemOnChip {
                                 },
                                 // LCDC
                                 0xFF40 => {
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize] = val
                                 }
                                 // SCY
                                 0xFF42 => {
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize] = val
                                 },
                                 // LY
                                 0xFF44 => {
@@ -1357,6 +1385,8 @@ impl SystemOnChip {
                                 // ?
                                 0xFF50 => {
                                     self.read_from_bios = false;
+                                    // self.dump_screen_ppm();
+                                    // self.dump_tileset0_ppm();
                                 },
                                 _ => {
                                     unimplemented!("Memory-mapped IO ${:04X?} is not implemented", addr);
@@ -1382,12 +1412,13 @@ impl SystemOnChip {
         SystemOnChip {
             regs: Regs::new(),
             read_from_bios: true,
+            vram: [0; VRAM_SIZE as usize],
+            mapped_io: [0; MAPPED_IO_SIZE as usize],
             memory_zero: [0; MEMORY_ZERO_SIZE as usize],
             cart: Vec::new(),
             bios: [0; 256], // 0 is nop,
             // GPU
-            vram: [0; VRAM_SIZE as usize],
-            gpu_screen: [0; 160 * 144 * 4],
+            gpu_screen: [0; 160 * 144],
             gpu_mode: GpuMode::ScanlineAccessingOAM,
             gpu_mode_clock: 0,
             gpu_line: 0,
@@ -1511,6 +1542,94 @@ impl SystemOnChip {
         self.regs.t += self.regs.lt as u32;
     }
 
+    fn gpu_render_line(&mut self, line: u8) {
+        // 0x8000 - 0x87FF | Tile set #1   0 - 127
+        // 0x8800 - 0x8FFF | Tile set #1 128 - 255
+        //                 | Tile set #0  -1 - -128
+        // 0x9000 - 0x97FF | Tile set #0   0 - 127
+        // 0x9800 - 0x9BFF | Tile map #0
+        // 0x9C00 - 0x9FFF | Tile map #1
+
+        // Screen size is 160x144.
+        // Buffer size is 256x256.
+        // Tile size is 8x8, so buffer has 32x32 tiles.
+
+        // FF40
+        //   Bit 4 - BG & Window Tile Data Select   (0=8800-97FF, 1=8000-8FFF)
+        //   Bit 3 - BG Tile Map Display Select     (0=9800-9BFF, 1=9C00-9FFF)
+
+        let is_tile_set_0 = (self.rb(0xFF40) & (1 << 4)) == 0;
+        let is_tile_map_0 = (self.rb(0xFF40) & (1 << 3)) == 0;
+
+        let tile_set_addr = match is_tile_set_0 {
+            true => 0x9000 as u16,
+            false => 0x8000 as u16
+        };
+
+        let tile_map_addr = match is_tile_map_0 {
+            true => 0x9800 as u16,
+            false => 0x9C00 as u16
+        };
+
+        // FIXME: use scx, scy.
+        let screen_y = line;
+        let scroll_y = self.rb(0xFF42);
+        let scroll_x = 0 as u8;
+
+        let buffer_y = line + scroll_y;
+
+        for screen_x in 0..160 {
+            let buffer_x = scroll_x + screen_x;
+
+            let tile_y = buffer_y / 8;
+            let tile_x = buffer_x / 8;
+            let tile_id_addr = tile_map_addr + (tile_y as u16) * 32 + (tile_x as u16);
+            assert!(
+                if is_tile_map_0 {
+                    0x9800 <= tile_id_addr && tile_id_addr <= 0x9BFF
+                } else {
+                    0x9C00 <= tile_id_addr && tile_id_addr <= 0x9FFF
+                });
+
+            let tile_id = self.rb(tile_id_addr);
+
+            let ly = buffer_y % 8;
+            let lx = buffer_x % 8;
+
+            // Signed case is also covered by wrapping_add.
+            let tile_id_u16 = match is_tile_set_0 {
+                true => expand_to_u16_retaining_sign(tile_id),
+                false => tile_id as u16,
+            };
+            // 16 bytes per 1 tile.
+            // FIXME: Can we use wrapping_mul?
+            let mut tile_addr_offset = 0 as u16;
+            for _ in 0..16 {
+                tile_addr_offset = tile_addr_offset.wrapping_add(tile_id_u16);
+            }
+            let tile_addr = tile_set_addr.wrapping_add(tile_addr_offset);
+            assert!(0x8000 <= tile_addr && tile_addr <= 0x97FF);
+
+            // 2 bytes consist of 1 line.
+            let line_addr1 = tile_addr + (2 * ly as u16);
+            let line_addr2 = line_addr1 + 1;
+            assert!(
+                if is_tile_set_0 {
+                    0x8800 <= line_addr1 && line_addr1 <= 0x97FF &&
+                    0x8800 <= line_addr2 && line_addr2 <= 0x97FF
+                } else {
+                    0x8000 <= line_addr1 && line_addr1 <= 0x8FFF &&
+                    0x8000 <= line_addr2 && line_addr2 <= 0x8FFF
+                });
+
+            let line_val1 = self.rb(line_addr1);
+            let line_val2 = self.rb(line_addr2);
+            let rlx = 7 - lx;
+            let val = ((((line_val1 & (1 << rlx)) >> rlx) << 1) + ((line_val2 & (1 << rlx)) >> rlx)) as u8;
+            self.gpu_screen[(160 * (screen_y as u16) + (screen_x as u16)) as usize] = val;
+        }
+    }
+
     fn gpu_step(&mut self, c: u8) {
         self.gpu_mode_clock += c as u16;
 
@@ -1534,15 +1653,15 @@ impl SystemOnChip {
                 if self.gpu_mode_clock >= 172 {
                     self.gpu_mode_clock -= 172;
                     self.gpu_mode = GpuMode::HorizontalBlank;
+                    self.gpu_render_line(self.gpu_line);
                 }
-
             }
             GpuMode::HorizontalBlank => {
                 if self.gpu_mode_clock >= 204 {
                     self.gpu_mode_clock -= 204;
                     self.gpu_line += 1;
 
-                    if self.gpu_line == 143 {
+                    if self.gpu_line == 144 {
                         // Go to VBlank
                         self.gpu_mode = GpuMode::VerticalBlank;
                     } else {
@@ -1588,5 +1707,93 @@ impl SystemOnChip {
         eprintln!("L: 0x{:02X?}", self.read_r8(Register::L));
         eprintln!("PC: 0x{:02X?}", self.read_r16(Register::PC));
         eprintln!("SP: 0x{:02X?}", self.read_r16(Register::SP));
+    }
+
+    fn dump_screen(&self) -> () {
+        for y in 0..144 {
+            for x in 0..160 {
+                let v = self.gpu_screen[160 * y + x];
+                let c = match v {
+                    0 => ' ',
+                    1 => '.',
+                    2 => '*',
+                    3 => 'X',
+                    _ => '?'
+                };
+                eprint!("{}", c);
+            }
+            eprintln!("");
+        }
+    }
+
+    fn dump_screen_ppm(&self) -> () {
+        use std::fs::File;
+        use std::io::{BufWriter, Write};
+
+        let mut f = BufWriter::new(File::create("./screen.ppm").unwrap());
+
+        let header = "P3\n160 144\n255\n";
+        f.write(header.as_bytes()).unwrap();
+
+        for y in 0..144 {
+            for x in 0..160 {
+                let v = self.gpu_screen[160 * y + x];
+                let c = match v {
+                    0 => "255 255 255",
+                    1 => "170 170 170",
+                    2 => "85 85 85",
+                    3 => "0 0 0",
+                    _ => "0 0 0"
+                };
+                f.write(c.as_bytes()).unwrap();
+                f.write("\n".as_bytes()).unwrap();
+            }
+        }
+    }
+
+    fn dump_tileset0_ppm(&self) -> () {
+        use std::fs::File;
+        use std::io::{BufWriter, Write};
+
+        let mut buffer = [0 as u8; 128*128];
+        for ty in 0..16 {
+            for tx in 0..16 {
+                let tile_addr = 0x8000 + 16 * (16 * ty + tx);
+                for y in 0..8 {
+                    let line_addr1 = tile_addr + 2 * y;
+                    let line_addr2 = line_addr1 + 1;
+
+                    let line_val1 = self.rb(line_addr1);
+                    let line_val2 = self.rb(line_addr2);
+
+                    for x in 0..8 {
+                        let rlx = 7 - x;
+                        let val = ((((line_val1 & (1 << rlx)) >> rlx) << 1) + ((line_val2 & (1 << rlx)) >> rlx)) as u8;
+                        let sy = 8 * ty + y;
+                        let sx = 8 * tx + x;
+                        buffer[(128 * sy + sx) as usize] = val;
+                    }
+                }
+            }
+        }
+        let mut f = BufWriter::new(File::create("./tileset.ppm").unwrap());
+
+        let header = "P3\n128 128\n255\n";
+        f.write(header.as_bytes()).unwrap();
+
+        for y in 0..128 {
+            for x in 0..128 {
+                let v = buffer[128 * y + x];
+                let c = match v {
+                    0 => "255 255 255",
+                    1 => "170 170 170",
+                    2 => "85 85 85",
+                    3 => "0 0 0",
+                    _ => "0 0 0"
+                };
+                f.write(c.as_bytes()).unwrap();
+                f.write("\n".as_bytes()).unwrap();
+            }
+        }
     }
 }
