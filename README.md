@@ -5,7 +5,6 @@
 - http://www.pastraiser.com/cpu/gameboy/gameboy_opcodes.html
 - http://bgb.bircd.org/pandocs.htm
 - http://marc.rawer.de/Gameboy/Docs/GBCPUman.pdf
-- https://gist.github.com/drhelius/6063288
 - https://rednex.github.io/rgbds/gbz80.7.html
 - 
 
