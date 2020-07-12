@@ -1,8 +1,10 @@
+extern crate piston_window;
 use std::env;
 use std::fs::File;
 use std::io;
 
 mod system;
+use piston_window::*;
 
 fn read_data(filename: &str) -> io::Result<Vec<u8>> {
     use std::io::Read;
@@ -49,9 +51,57 @@ fn main() {
             soc.load_bios(&bios_data);
         }
 
-        loop {
-            soc.step();
+        let scale = 4;
+        let mut window: PistonWindow = WindowSettings::new("Gameboy emulator", [160 * scale, 144 * scale]).exit_on_esc(true).build().unwrap();
+
+        while let Some(event) = window.next() {
+
+            match event {
+                Event::Input(_, _) => {
+
+                },
+                Event::Loop(l) => {
+                    match l {
+                        Loop::Render(args) => {
+                            let screen_data = soc.screen();
+                            window.draw_2d(&event, | context, graphics, _device | {
+                                clear([0.6; 4], graphics);
+                                for y in 0..144 {
+                                    for x in 0..160 {
+                                        let v = screen_data[160 * y + x];
+                                        let c = match v {
+                                            0 => [1.0, 1.0, 1.0, 1.0],
+                                            1 => [0.666, 0.666, 0.666, 0.666],
+                                            2 => [0.333, 0.333, 0.333, 0.333],
+                                            3 => [0.0, 0.0, 0.0, 0.0],
+                                            _ => [0.0, 0.0, 0.0, 0.0]
+                                        };
+                                        let lx = (x as u32 * scale) as f64;
+                                        let rx = ((x as u32 + 1) * scale) as f64;
+                                        let uy = (y as u32 * scale) as f64;
+                                        let dy = ((y as u32 + 1) * scale) as f64;
+
+                                        rectangle(c, [lx, uy, rx, dy], context.transform, graphics)
+                                    }
+                                }
+                            });
+                        },
+                        _ => {
+                        }
+                    }
+                },
+                Event::Custom(_, _, _) => {
+                }
+            }
+
+            for _ in 0..10000 {
+                soc.step();
+            }
         }
+
+        // loop {
+        //     soc.step();
+        // }
 
     } else {
         println!("Usage: {} target.rom", args[0]);

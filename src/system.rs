@@ -1694,6 +1694,10 @@ impl SystemOnChip {
         self.gpu_step(cyclespent);
     }
 
+    pub fn screen(&mut self) -> [u8; 160 * 144] {
+        self.gpu_screen
+    }
+
     // debug functions
     fn dump_registers(&self) -> () {
         // A, B, C, D, E, H, L, F, PC, SP, LT
