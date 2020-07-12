@@ -87,7 +87,10 @@ fn main() {
                             });
                         },
                         Loop::Update(args) => {
-                            soc.step_seconds(args.dt);
+                            // FIXME: Remove this "for" when it runs faster than gameboy
+                            for _ in 0..10 {
+                                soc.step_seconds(args.dt);
+                            }
                         }
                         _ => {
                         }
