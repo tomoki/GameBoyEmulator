@@ -1092,6 +1092,17 @@ impl SystemOnChip {
         self.set_proc_clock(12);
     }
 
+    // 0xC3
+    // JP d16
+    // Affect: - - - -
+    // CPU Clock: 12
+    // Bytes: 3
+    fn jp_d16(&mut self) -> () {
+        let nn = self.read_u16_pc();
+        self.write_r16(Register::PC, nn);
+        self.set_proc_clock(12);
+    }
+
     // 0xC5
     // PUSH BC
     // Affect: - - - -
@@ -1185,6 +1196,17 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
+    // 0xF3
+    // DI
+    // Affect: - - - -
+    // CPU Clock: 4
+    // Bytes: 1
+    fn di(&mut self) -> () {
+        // FIXME: Implement here
+        eprintln!("DI is not implemented");
+        self.set_proc_clock(4);
+    }
+
     // 0xFE
     // CP d16
     // Affect: Z, 1, H, C
@@ -1253,6 +1275,14 @@ impl SystemOnChip {
                         } else {
                             // memory-mapped IO
                             match addr {
+                                // TAC
+                                0xFF03 => {
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize]
+                                },
+                                // IF
+                                0xFF0F => {
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize]
+                                }
                                 // NR 11
                                 0xFF11 => {
                                     0
@@ -1305,7 +1335,7 @@ impl SystemOnChip {
                                     0
                                 },
                                 _ => {
-                                    unimplemented!("Memory-mapped IO ${:04X?} is not implemented", addr);
+                                    unimplemented!("Read of Memory-mapped IO ${:04X?} is not implemented", addr);
                                     0
                                 }
                             }
@@ -1344,6 +1374,15 @@ impl SystemOnChip {
                             self.memory_zero[(addr - MEMORY_ZERO_START) as usize] = val
                         } else {
                             match addr {
+                                // TAC
+                                0xFF07 => {
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize] = val;
+                                },
+                                // IF
+                                0xFF0F => {
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize] = val;
+                                    eprintln!("Implement clock interrupt");
+                                }
                                 // NR 11
                                 0xFF11 => {
                                 },
@@ -1389,7 +1428,7 @@ impl SystemOnChip {
                                     // self.dump_tileset0_ppm();
                                 },
                                 _ => {
-                                    unimplemented!("Memory-mapped IO ${:04X?} is not implemented", addr);
+                                    unimplemented!("Write of Memory-mapped IO ${:04X?} is not implemented", addr);
                                 }
                             }
                         }
@@ -1511,6 +1550,7 @@ impl SystemOnChip {
             0xAF => self.xor_a(),
             0xBE => self.cp_addr_hl(),
             0xC1 => self.pop_bc(),
+            0xC3 => self.jp_d16(),
             0xC5 => self.push_bc(),
             0xC9 => self.ret(),
             0xCD => self.call_a16(),
@@ -1519,6 +1559,7 @@ impl SystemOnChip {
             0xEA => self.ld_addr_d16_a(),
             0xF0 => self.ldh_a_addr_d8(),
             0xF2 => self.ldh_a_addr_c(),
+            0xF3 => self.di(),
             0xFE => self.cp_d8(),
             // Prefix CB
             0xCB => {
