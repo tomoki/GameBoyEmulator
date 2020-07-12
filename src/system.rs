@@ -1685,13 +1685,24 @@ impl SystemOnChip {
         }
     }
 
-    pub fn step(&mut self) -> () {
+    pub fn step(&mut self) -> u8 {
         self.dispatch();
 
         let cyclespent = self.get_proc_clock();
         self.set_proc_clock(0);
 
         self.gpu_step(cyclespent);
+
+        cyclespent
+    }
+
+    pub fn step_seconds(&mut self, seconds : f64) -> () {
+        // CPU is 4.19MHz
+        let cycles = (seconds * 41943040.0) as u64;
+        let mut spent_cycle = 0 as u64;
+        while spent_cycle < cycles {
+            spent_cycle += self.step() as u64;
+        }
     }
 
     pub fn screen(&mut self) -> [u8; 160 * 144] {

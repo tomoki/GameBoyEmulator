@@ -86,16 +86,15 @@ fn main() {
                                 }
                             });
                         },
+                        Loop::Update(args) => {
+                            soc.step_seconds(args.dt);
+                        }
                         _ => {
                         }
                     }
                 },
                 Event::Custom(_, _, _) => {
                 }
-            }
-
-            for _ in 0..10000 {
-                soc.step();
             }
         }
 
