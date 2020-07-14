@@ -69,14 +69,83 @@ enum GpuMode {
     VerticalBlank,         // number 1
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+struct InterruptFlag {
+    transition: bool,
+    serial_transfer: bool,
+    timer_overflow: bool,
+    lcdc: bool,
+    vblank: bool
+}
+
+impl InterruptFlag {
+    pub fn new() -> InterruptFlag {
+        InterruptFlag {
+            transition: false,
+            serial_transfer: false,
+            timer_overflow: false,
+            lcdc: false,
+            vblank: false
+        }
+    }
+    pub fn write_u8(&mut self, val: u8) -> () {
+        // Bit 4: Transition from High to Low of Pin number P10-P13.
+        // Bit 3: Serial I/O transfer complete
+        // Bit 2: Timer Overflow
+        // Bit 1: LCDC (see STAT)
+        // Bit 0: V-Blank
+        self.transition      = (val & (1 << 4)) != 0;
+        self.serial_transfer = (val & (1 << 3)) != 0;
+        self.timer_overflow  = (val & (1 << 2)) != 0;
+        self.lcdc            = (val & (1 << 1)) != 0;
+        self.vblank          = (val & (1 << 0)) != 0;
+    }
+
+    pub fn read_u8(&self) -> u8 {
+        // Bit 4: Transition from High to Low of Pin number P10-P13.
+        // Bit 3: Serial I/O transfer complete
+        // Bit 2: Timer Overflow
+        // Bit 1: LCDC (see STAT)
+        // Bit 0: V-Blank
+
+        let mut val = 0;
+        if self.transition {
+            val |= 1 << 4;
+        }
+        if self.serial_transfer {
+            val |= 1 << 3;
+        }
+        if self.timer_overflow {
+            val |= 1 << 2;
+        }
+        if self.lcdc {
+            val |= 1 << 1;
+        }
+        if self.vblank {
+            val |= 1 << 0;
+        }
+        val
+    }
+    pub fn reset(&mut self) -> () {
+        self.write_u8(0);
+    }
+
+    pub fn or(&mut self, other: InterruptFlag) -> () {
+        self.write_u8(self.read_u8() | other.read_u8());
+    }
+}
+
 const VRAM_START : u16 = 0x8000;
 const VRAM_END : u16 = 0x9FFF;
+const INTERNAL_RAM_START : u16 = 0xC000;
+const INTERNAL_RAM_END : u16 = 0xDFFF;
 const MAPPED_IO_START: u16 = 0xFF00;
 const MAPPED_IO_END : u16 = 0xFF79;
 const MEMORY_ZERO_START : u16 = 0xFF80;
 const MEMORY_ZERO_END : u16 = 0xFFFF;
 
 const VRAM_SIZE : u16 = VRAM_END - VRAM_START + 1;
+const INTERNAL_RAM_SIZE : u16 = INTERNAL_RAM_END - INTERNAL_RAM_START + 1;
 const MAPPED_IO_SIZE : u16 = MAPPED_IO_END - MAPPED_IO_START + 1;
 const MEMORY_ZERO_SIZE : u16 = MEMORY_ZERO_END - MEMORY_ZERO_START + 1;
 
@@ -86,9 +155,16 @@ pub struct SystemOnChip {
     // 0x0000 - 0x0100 is mapped to bios.
     pub read_from_bios: bool,
 
+    global_interruption_enabled: bool, // used by di, ei
+    interruption_enabled: InterruptFlag,
+    interruption_occurred: InterruptFlag,
+    interruption_occurred_in_this_step: InterruptFlag,
+
     // memory
     // 0x8000 - 0x9FFF
     vram: [u8; VRAM_SIZE as usize],
+    // 0xC000 - 0xDFFF
+    internal_ram: [u8; INTERNAL_RAM_SIZE as usize],
     // 0xFF00 - 0xFF79
     mapped_io: [u8; MAPPED_IO_SIZE as usize],
     // 0xFF80 - 0xFFFF
@@ -437,15 +513,29 @@ impl SystemOnChip {
         self.flag_set(FLAG_CARRY, a < n);
     }
 
+    // Interruption Handler
+    fn interrupt_by_vblank(&mut self) -> () {
+        self.set_proc_clock(4);
+    }
     // actual functions
 
     // 0x00
     // NOP
     // Affect: - - - -
-    // CPU Clock 4
+    // CPU Clock: 4
     // Bytes 1
     fn nop(&mut self) -> () {
         self.set_proc_clock(4);
+    }
+
+    // 0x01
+    // LD BC d16
+    // Affect: - - - -
+    // CPU Clock: 12
+    // Bytes: 3
+    fn ld_bc_d16(&mut self) -> () {
+        self.ld_xy_d16(Register::B, Register::C);
+        self.set_proc_clock(12);
     }
 
     // 0x03
@@ -496,6 +586,7 @@ impl SystemOnChip {
     // Bytes 1
     fn ld_a_addr_bc(&mut self) -> () {
         self.ld_a_addr_xy(Register::B, Register::C);
+        self.set_proc_clock(8);
     }
 
     // 0x0C
@@ -1092,6 +1183,23 @@ impl SystemOnChip {
         self.set_proc_clock(12);
     }
 
+    // 0xC2
+    // JP NZ, d16
+    // Affect: - - - -
+    // CPU Clock: 16/12
+    // Bytes: 3
+    fn jp_nz_d16(&mut self) -> () {
+        let addr = self.read_u16_pc();
+        let jump = !self.flag_is_set(FLAG_ZERO);
+
+        if jump {
+            self.write_r16(Register::PC, addr);
+            self.set_proc_clock(16);
+        } else {
+            self.set_proc_clock(12);
+        }
+    }
+
     // 0xC3
     // JP d16
     // Affect: - - - -
@@ -1136,6 +1244,18 @@ impl SystemOnChip {
         self.set_proc_clock(12);
     }
 
+    // 0xD9
+    // RETI
+    // Affect: - - - -
+    // CPU Clock: 8
+    // Bytes: 1
+    fn reti(&mut self) -> () {
+        let addr = self.pop_u16();
+        self.write_r16(Register::PC, addr);
+        self.global_interruption_enabled = true;
+        self.set_proc_clock(8);
+    }
+
     // 0xE0
     // LDH (n), A (= LD (0xFF00 + n), A)
     // Affect - - - -
@@ -1157,6 +1277,26 @@ impl SystemOnChip {
     fn ldh_addr_c_a(&mut self) -> () {
         let addr : u16 = 0xFF00 + self.read_r8(Register::C) as u16;
         self.wb(addr, self.read_r8(Register::A));
+        self.set_proc_clock(8);
+    }
+
+    // 0xE6
+    // AND d8
+    // Affect: Z 0 1 0
+    // CPU Clock: 8
+    // Bytes: 2
+    fn and_d8(&mut self) -> () {
+        let n = self.read_u8_pc();
+        let prev = self.read_r8(Register::A);
+        let next = prev & n;
+        self.write_r8(Register::A, next);
+
+        self.flag_clear();
+        self.flag_set(FLAG_ZERO, next == 0);
+        self.flag_set(FLAG_N, false);
+        self.flag_set(FLAG_HALF_CARRY, true);
+        self.flag_set(FLAG_CARRY, false);
+
         self.set_proc_clock(8);
     }
 
@@ -1184,6 +1324,16 @@ impl SystemOnChip {
         self.set_proc_clock(12);
     }
 
+    // 0xF1
+    // POP AF
+    // Affect: - - - -
+    // CPU Clock: 12
+    // Bytes: 1
+    fn pop_af(&mut self) -> () {
+        self.pop_xy(Register::A, Register::F);
+        self.set_proc_clock(12);
+    }
+
     // 0xF2
     // LDH A, (C) = LD A, (0xFF00+C)
     // Affect: - - - -
@@ -1202,10 +1352,44 @@ impl SystemOnChip {
     // CPU Clock: 4
     // Bytes: 1
     fn di(&mut self) -> () {
-        // FIXME: Implement here
-        eprintln!("DI is not implemented");
+        // eprintln!("DI is not implemented correctly, it should disable interruption after the next instruction is executed");
+        self.global_interruption_enabled = false;
         self.set_proc_clock(4);
     }
+
+    // 0xF5
+    // PUSH AF
+    // Affect: - - - -
+    // CPU Clock: 16
+    // Bytes: 1
+    fn push_af(&mut self) -> () {
+        self.push_xy(Register::A, Register::F);
+        self.set_proc_clock(16);
+    }
+
+    // 0xFA
+    // LD A, (nn)
+    // Affect: - - - -
+    // CPU Clock: 16
+    // Bytes: 3
+    fn ld_a_addr_d16(&mut self) -> () {
+        let addr = self.read_u16_pc();
+        let valu = self.rb(addr);
+        self.write_r8(Register::A, valu);
+        self.set_proc_clock(16);
+    }
+
+    // 0xFB
+    // EI
+    // Affect: - - - -
+    // CPU Clock: 4
+    // Bytes: 1
+    fn ei(&mut self) -> () {
+        // eprintln!("EI is not implemented correctly, it should enable interruption after the next instruction is executed");
+        self.global_interruption_enabled = true;
+        self.set_proc_clock(4);
+    }
+
 
     // 0xFE
     // CP d16
@@ -1265,11 +1449,17 @@ impl SystemOnChip {
                 // 0x9C00 - 0x9FFF | Tile map #1
                 self.vram[(addr - VRAM_START) as usize]
             },
+            0xC000 | 0xD000 => {
+                // Internal RAM
+                self.internal_ram[(addr - INTERNAL_RAM_START) as usize]
+            },
             0xF000 => {
                 match addr & 0x0F00 {
                     0x0F00 => {
                         // zero page or memory-mapped IO
-                        if addr >= 0xFF80 {
+                        if addr == 0xFFFF {
+                            self.interruption_enabled.read_u8()
+                        } else if addr >= 0xFF80 {
                             // zero page
                             self.memory_zero[(addr - 0xFF80) as usize]
                         } else {
@@ -1281,7 +1471,7 @@ impl SystemOnChip {
                                 },
                                 // IF
                                 0xFF0F => {
-                                    self.mapped_io[(addr - MAPPED_IO_START) as usize]
+                                    self.interruption_occurred.read_u8()
                                 }
                                 // NR 11
                                 0xFF11 => {
@@ -1314,13 +1504,50 @@ impl SystemOnChip {
                                 // ?
                                 0xFF0C => {
                                     0
-                                }
+                                },
                                 // LCDC
                                 0xFF40 => {
                                     self.mapped_io[(addr - MAPPED_IO_START) as usize]
-                                }
+                                },
+                                // STAT
+                                0xFF41 => {
+                                    // Bit 6 = LYC == LY
+                                    // Bit 5 = Mode 10
+                                    // Bit 4 = Mode 01
+                                    // Bit 3 = Mode 00
+                                    // Bit 2 = LYC == LCDC LY
+                                    // Bit 1-0 = Mode flag
+                                    // 00 = self.gpu_mode == GpuMode::HorizontalBlank
+                                    // 01 = self.gpu_mode == GpuMode::VerticalBlank
+                                    // 10 = self.gpu_mode == GpuMode::ScanlineAccessingOAM
+                                    // 11 = self.gpu_mode == GpuMode::ScanlineAccessingVRAM
+
+                                    // FIXME: Implement all flags
+                                    // eprintln!("Implement read of STAT");
+
+                                    let mode_flag = match self.gpu_mode {
+                                        GpuMode::ScanlineAccessingOAM => {
+                                            10
+                                        }
+                                        GpuMode::ScanlineAccessingVRAM => {
+                                            11
+                                        }
+                                        GpuMode::HorizontalBlank => {
+                                            00
+                                        }
+                                        GpuMode::VerticalBlank => {
+                                            01
+                                        }
+                                    };
+
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize] | mode_flag
+                                },
                                 // SCY
                                 0xFF42 => {
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize]
+                                },
+                                // SCX
+                                0xFF43 => {
                                     self.mapped_io[(addr - MAPPED_IO_START) as usize]
                                 },
                                 // LY
@@ -1331,7 +1558,12 @@ impl SystemOnChip {
                                 0xFF47 => {
                                     0
                                 },
-                                0xFF50 => {
+                                // OBP0
+                                0xFF48 => {
+                                    0
+                                },
+                                // OBP1
+                                0xFF49 => {
                                     0
                                 },
                                 _ => {
@@ -1364,12 +1596,19 @@ impl SystemOnChip {
             0x8000 | 0x9000 => {
                 // VRAM
                 self.vram[(addr - VRAM_START) as usize] = val;
-            }
+            },
+            0xC000 | 0xD000 => {
+                // Internal RAM
+                self.internal_ram[(addr - INTERNAL_RAM_START) as usize] = val;
+            },
             0xF000 => {
                 match addr & 0x0F00 {
                     0x0F00 => {
                         // zero page or memory-mapped IO
-                        if addr >= MEMORY_ZERO_START {
+                        if addr == 0xFFFF {
+                            // IRQ
+                            self.interruption_enabled.write_u8(val);
+                        } else if addr >= MEMORY_ZERO_START {
                             // zero page
                             self.memory_zero[(addr - MEMORY_ZERO_START) as usize] = val
                         } else {
@@ -1380,9 +1619,8 @@ impl SystemOnChip {
                                 },
                                 // IF
                                 0xFF0F => {
-                                    self.mapped_io[(addr - MAPPED_IO_START) as usize] = val;
-                                    eprintln!("Implement clock interrupt");
-                                }
+                                    self.interruption_occurred.write_u8(val);
+                                },
                                 // NR 11
                                 0xFF11 => {
                                 },
@@ -1410,9 +1648,17 @@ impl SystemOnChip {
                                 // LCDC
                                 0xFF40 => {
                                     self.mapped_io[(addr - MAPPED_IO_START) as usize] = val
-                                }
+                                },
+                                // STAT
+                                0xFF41 => {
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize] = val
+                                },
                                 // SCY
                                 0xFF42 => {
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize] = val
+                                },
+                                // SCX
+                                0xFF43 => {
                                     self.mapped_io[(addr - MAPPED_IO_START) as usize] = val
                                 },
                                 // LY
@@ -1420,6 +1666,12 @@ impl SystemOnChip {
                                 },
                                 // BGP
                                 0xFF47 => {
+                                },
+                                // OBP0
+                                0xFF48 => {
+                                },
+                                // OBP1
+                                0xFF49 => {
                                 },
                                 // ?
                                 0xFF50 => {
@@ -1450,8 +1702,15 @@ impl SystemOnChip {
     pub fn new() -> SystemOnChip {
         SystemOnChip {
             regs: Regs::new(),
+
+            global_interruption_enabled: false,
+            interruption_enabled: InterruptFlag::new(),
+            interruption_occurred: InterruptFlag::new(),
+            interruption_occurred_in_this_step: InterruptFlag::new(),
+
             read_from_bios: true,
             vram: [0; VRAM_SIZE as usize],
+            internal_ram: [0; INTERNAL_RAM_SIZE as usize],
             mapped_io: [0; MAPPED_IO_SIZE as usize],
             memory_zero: [0; MEMORY_ZERO_SIZE as usize],
             cart: Vec::new(),
@@ -1489,6 +1748,7 @@ impl SystemOnChip {
 
         match op {
             0x00 => self.nop(),
+            0x01 => self.ld_bc_d16(),
             0x03 => self.inc_bc(),
             0x04 => self.inc_b(),
             0x05 => self.dec_b(),
@@ -1521,7 +1781,7 @@ impl SystemOnChip {
             0x2E => self.ld_l_d8(),
             0x31 => self.ld_sp_d16(),
             0x32 => self.ld_addr_hl_minus_a(),
-            0x34 => self.inc_a(),
+            0x3C => self.inc_a(),
             0x3D => self.dec_a(),
             0x3E => self.ld_a_d8(),
             0x47 => self.ld_b_a(),
@@ -1550,16 +1810,23 @@ impl SystemOnChip {
             0xAF => self.xor_a(),
             0xBE => self.cp_addr_hl(),
             0xC1 => self.pop_bc(),
+            0xC2 => self.jp_nz_d16(),
             0xC3 => self.jp_d16(),
             0xC5 => self.push_bc(),
             0xC9 => self.ret(),
             0xCD => self.call_a16(),
+            0xD9 => self.reti(),
             0xE0 => self.ldh_addr_n_a(),
             0xE2 => self.ldh_addr_c_a(),
+            0xE6 => self.and_d8(),
             0xEA => self.ld_addr_d16_a(),
             0xF0 => self.ldh_a_addr_d8(),
+            0xF1 => self.pop_af(),
             0xF2 => self.ldh_a_addr_c(),
             0xF3 => self.di(),
+            0xF5 => self.push_af(),
+            0xFA => self.ld_a_addr_d16(),
+            0xFB => self.ei(),
             0xFE => self.cp_d8(),
             // Prefix CB
             0xCB => {
@@ -1612,10 +1879,9 @@ impl SystemOnChip {
             false => 0x9C00 as u16
         };
 
-        // FIXME: use scx, scy.
         let screen_y = line;
         let scroll_y = self.rb(0xFF42);
-        let scroll_x = 0 as u8;
+        let scroll_x = self.rb(0xFF43);
 
         let buffer_y = line + scroll_y;
 
@@ -1705,6 +1971,7 @@ impl SystemOnChip {
                     if self.gpu_line == 144 {
                         // Go to VBlank
                         self.gpu_mode = GpuMode::VerticalBlank;
+                        self.interruption_occurred_in_this_step.vblank = true;
                     } else {
                         self.gpu_mode = GpuMode::ScanlineAccessingOAM;
                     }
@@ -1727,12 +1994,34 @@ impl SystemOnChip {
     }
 
     pub fn step(&mut self) -> u8 {
+        let mut cyclespent = 0;
+
+        // First op
         self.dispatch();
-
-        let cyclespent = self.get_proc_clock();
+        let cyclespent1 = self.get_proc_clock();
         self.set_proc_clock(0);
+        self.gpu_step(cyclespent1);
 
-        self.gpu_step(cyclespent);
+        cyclespent += cyclespent1;
+        self.interruption_occurred.or(self.interruption_occurred_in_this_step);
+
+        // interruption check
+        if self.global_interruption_enabled {
+            if self.interruption_occurred_in_this_step.vblank && self.interruption_enabled.vblank {
+                self.interruption_occurred.vblank = false;
+                self.global_interruption_enabled = false;
+                self.push_u16(self.read_r16(Register::PC));
+                self.write_r16(Register::PC, 0x0040);
+                self.set_proc_clock(12);
+
+                let cyclespent2 = self.get_proc_clock();
+                self.gpu_step(cyclespent2);
+                cyclespent += cyclespent2;
+
+                self.set_proc_clock(0);
+            }
+        }
+        self.interruption_occurred_in_this_step.reset();
 
         cyclespent
     }
