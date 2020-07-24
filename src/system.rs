@@ -139,6 +139,8 @@ const VRAM_START : u16 = 0x8000;
 const VRAM_END : u16 = 0x9FFF;
 const INTERNAL_RAM_START : u16 = 0xC000;
 const INTERNAL_RAM_END : u16 = 0xDFFF;
+const OAM_START : u16 = 0xFE00;
+const OAM_END : u16 = 0xFE9F;
 const MAPPED_IO_START: u16 = 0xFF00;
 const MAPPED_IO_END : u16 = 0xFF79;
 const MEMORY_ZERO_START : u16 = 0xFF80;
@@ -148,6 +150,7 @@ const VRAM_SIZE : u16 = VRAM_END - VRAM_START + 1;
 const INTERNAL_RAM_SIZE : u16 = INTERNAL_RAM_END - INTERNAL_RAM_START + 1;
 const MAPPED_IO_SIZE : u16 = MAPPED_IO_END - MAPPED_IO_START + 1;
 const MEMORY_ZERO_SIZE : u16 = MEMORY_ZERO_END - MEMORY_ZERO_START + 1;
+const OAM_SIZE : u16 = OAM_END - OAM_START + 1 ;
 
 pub struct SystemOnChip {
     regs: Regs,
@@ -165,6 +168,8 @@ pub struct SystemOnChip {
     vram: [u8; VRAM_SIZE as usize],
     // 0xC000 - 0xDFFF
     internal_ram: [u8; INTERNAL_RAM_SIZE as usize],
+    // 0xFE00 - 0xFEA0
+    oam: [u8; OAM_SIZE as usize],
     // 0xFF00 - 0xFF79
     mapped_io: [u8; MAPPED_IO_SIZE as usize],
     // 0xFF80 - 0xFFFF
@@ -497,7 +502,6 @@ impl SystemOnChip {
         // How about half carry and carry/
     }
 
-
     // CP d8
     // Affect: Z, 1, H, C
     // CPU Clock: -
@@ -513,10 +517,63 @@ impl SystemOnChip {
         self.flag_set(FLAG_CARRY, a < n);
     }
 
-    // Interruption Handler
-    fn interrupt_by_vblank(&mut self) -> () {
+    // SWAP x
+    // Affect: Z 0 0 0
+    // CPU Clock: 8
+    // Bytes: 1
+    fn swap_x(&mut self, r: Register) -> () {
+        let prev = self.read_r8(r);
+        let next = ((prev << 4) & 0xF0)| ((prev >> 4) & 0x0F);
+        self.write_r8(r, next);
+
+        self.flag_clear();
+        self.flag_set(FLAG_ZERO, prev == 0);
+        self.set_proc_clock(8);
+    }
+
+    // OR x
+    // Affect: Z 0 0 0
+    // CPU Clock: 8
+    // Bytes: 1
+    fn or_x(&mut self, r: Register) -> () {
+        let prev_a = self.read_r8(Register::A);
+        let app = self.read_r8(r);
+        let res = prev_a | app;
+        self.write_r8(r, res);
+
+        self.flag_clear();
+        self.flag_set(FLAG_ZERO, res == 0);
         self.set_proc_clock(4);
     }
+
+    // AND x
+    // Affect: Z 0 0 0
+    // CPU Clock: 8
+    // Bytes: 1
+    fn and_x(&mut self, r: Register) -> () {
+        let prev_a = self.read_r8(Register::A);
+        let app = self.read_r8(r);
+        let res = prev_a & app;
+        self.write_r8(r, res);
+
+        self.flag_clear();
+        self.flag_set(FLAG_ZERO, res == 0);
+        self.flag_set(FLAG_HALF_CARRY, true);
+        self.set_proc_clock(4);
+    }
+
+    // BIT n, x
+    // Affect: Z 0 1 -
+    // CPU Clock: 8
+    // Bytes: 2
+    fn bit_n_x(&mut self, n : u8, r: Register) -> () {
+        let s = self.read_r8(r) & (1 << n) == 0;
+        self.flag_set(FLAG_ZERO, s);
+        self.flag_set(FLAG_N, false);
+        self.flag_set(FLAG_HALF_CARRY, true);
+        self.set_proc_clock(8);
+    }
+
     // actual functions
 
     // 0x00
@@ -843,6 +900,22 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
+    // 0x2F
+    // CPL
+    // Affect - 1 1 -
+    // CPU Clock: 4
+    // Bytes: 1
+    fn cpl(&mut self) -> () {
+        let prev = self.read_r8(Register::A);
+        let val = !prev;
+        self.write_r8(Register::A, val);
+
+        self.flag_set(FLAG_N, true);
+        self.flag_set(FLAG_HALF_CARRY, true);
+
+        self.set_proc_clock(4);
+    }
+
     // 0x31
     // LD SP, d16
     // Affect: - - - -
@@ -1145,6 +1218,16 @@ impl SystemOnChip {
         self.set_proc_clock(4);
     }
 
+    // 0xA0
+    // AND B
+    // Affect: Z 0 1 0
+    // CPU Clock: 4
+    // Bytes: 1
+    fn and_b(&mut self) -> () {
+        self.and_x(Register::B);
+        self.set_proc_clock(4);
+    }
+
     // 0xAF
     // XOR A
     // Affect: Z 0 0 0
@@ -1158,6 +1241,16 @@ impl SystemOnChip {
         self.flag_clear();
         self.flag_set(FLAG_ZERO, self.read_r8(Register::A) == 0);
 
+        self.set_proc_clock(4);
+    }
+
+    // 0xB0
+    // OR B
+    // Affect: Z 0 0 0
+    // CPU Clock: 4
+    // Bytes: 1
+    fn or_b(&mut self) -> () {
+        self.or_x(Register::B);
         self.set_proc_clock(4);
     }
 
@@ -1420,6 +1513,7 @@ impl SystemOnChip {
     }
 
     // Prefix CB instructions
+    // BIT functions are not listed here.
 
     // 0xCB 0x11
     // RL C
@@ -1431,17 +1525,13 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
-    // 0xCB 0x7C
-    // BIT 7, H
-    // Affect: Z 0 1 -
+    // 0xCB 0x37
+    // SWAP A
+    // Affect: Z 0 0 0
     // CPU Clock: 8
-    // Bytes: 2
-    fn bit_7_h(&mut self) -> () {
-        let s = self.read_r8(Register::H) & (1 << 7) == 0;
-        self.flag_set(FLAG_ZERO, s);
-        self.flag_set(FLAG_N, false);
-        self.flag_set(FLAG_HALF_CARRY, true);
-
+    // Bytes: 1
+    fn swap_a(&mut self) -> () {
+        self.swap_x(Register::A);
         self.set_proc_clock(8);
     }
 
@@ -1482,6 +1572,11 @@ impl SystemOnChip {
                         } else {
                             // memory-mapped IO
                             match addr {
+                                // P1
+                                0xFF00 => {
+                                    // TODO: eprintln!("Implement joypad");
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize]
+                                },
                                 // TAC
                                 0xFF03 => {
                                     self.mapped_io[(addr - MAPPED_IO_START) as usize]
@@ -1592,7 +1687,15 @@ impl SystemOnChip {
                                 }
                             }
                         }
-                    }
+                    },
+                    0x0E00 => {
+                        // OAM
+                        if 0xFE00 <= addr && addr < 0xFEA0 {
+                            self.oam[(addr - 0xFE00) as usize]
+                        } else {
+                            unimplemented!()
+                        }
+                    },
                     _ => {
                         unimplemented!();
                         0
@@ -1633,6 +1736,10 @@ impl SystemOnChip {
                             self.memory_zero[(addr - MEMORY_ZERO_START) as usize] = val
                         } else {
                             match addr {
+                                // P1
+                                0xFF00 => {
+                                    self.mapped_io[(addr - MAPPED_IO_START) as usize] = val;
+                                },
                                 // TAC
                                 0xFF07 => {
                                     self.mapped_io[(addr - MAPPED_IO_START) as usize] = val;
@@ -1684,6 +1791,22 @@ impl SystemOnChip {
                                 // LY
                                 0xFF44 => {
                                 },
+                                // DMA
+                                0xFF46 => {
+                                    // The DMA Transfer (40*28 bit) from internal ROM orRAM ($0000-$F19F)
+                                    // to the OAM (address $FE00-$FE9F).
+                                    // Written value is XX of 0xXX00.
+                                    let addr = (val as u16) * 0x100;
+                                    for i in 0..40 {
+                                        let src = addr + i;
+                                        let dst = OAM_START + i;
+
+                                        // TODO: We should cut off 4 bit
+                                        let v = self.rb(src);
+                                        self.wb(dst, v);
+                                    }
+                                    // eprintln!("DMA should take 160us");
+                                }
                                 // BGP
                                 0xFF47 => {
                                     eprintln!("Write of BGP is not implemented");
@@ -1707,12 +1830,22 @@ impl SystemOnChip {
                                 }
                             }
                         }
-                    }
+                    },
+                    0x0E00 => {
+                        // OAM
+                        if 0xFE00 <= addr && addr < 0xFEA0 {
+                            self.oam[(addr - 0xFE00) as usize] = val;
+                        } else {
+                            unimplemented!()
+                        }
+                    },
                     _ => {
+                        unimplemented!();
                     }
                 }
             }
             _ => {
+                unimplemented!();
             }
         }
     }
@@ -1734,6 +1867,7 @@ impl SystemOnChip {
             read_from_bios: true,
             vram: [0; VRAM_SIZE as usize],
             internal_ram: [0; INTERNAL_RAM_SIZE as usize],
+            oam: [0; OAM_SIZE as usize],
             mapped_io: [0; MAPPED_IO_SIZE as usize],
             memory_zero: [0; MEMORY_ZERO_SIZE as usize],
             cart: Vec::new(),
@@ -1802,6 +1936,7 @@ impl SystemOnChip {
             0x2C => self.inc_l(),
             0x2D => self.dec_l(),
             0x2E => self.ld_l_d8(),
+            0x2F => self.cpl(),
             0x31 => self.ld_sp_d16(),
             0x32 => self.ld_addr_hl_minus_a(),
             0x3C => self.inc_a(),
@@ -1830,7 +1965,9 @@ impl SystemOnChip {
             0x94 => self.sub_h(),
             0x95 => self.sub_l(),
             0x97 => self.sub_a(),
+            0xA0 => self.and_b(),
             0xAF => self.xor_a(),
+            0xB0 => self.or_b(),
             0xBE => self.cp_addr_hl(),
             0xC1 => self.pop_bc(),
             0xC2 => self.jp_nz_d16(),
@@ -1857,8 +1994,14 @@ impl SystemOnChip {
                 let pc = self.read_r16(Register::PC);
                 let op = self.read_u8_pc();
                 match op {
-                    0x7C => self.bit_7_h(),
                     0x11 => self.rl_c(),
+                    0x37 => self.swap_a(),
+                    0x5F => self.bit_n_x(3, Register::A),
+                    0x67 => self.bit_n_x(4, Register::A),
+                    0x6F => self.bit_n_x(5, Register::A),
+                    0x77 => self.bit_n_x(6, Register::A),
+                    0x7C => self.bit_n_x(7, Register::H),
+                    0x7F => self.bit_n_x(7, Register::A),
                     _ => {
                         unimplemented!("op 0xCB 0x{:02X?} at 0x{:04X?}", op, pc);
                     }
@@ -1890,75 +2033,100 @@ impl SystemOnChip {
         //   Bit 4 - BG & Window Tile Data Select   (0=8800-97FF, 1=8000-8FFF)
         //   Bit 3 - BG Tile Map Display Select     (0=9800-9BFF, 1=9C00-9FFF)
 
-        let is_tile_set_0 = (self.rb(0xFF40) & (1 << 4)) == 0;
-        let is_tile_map_0 = (self.rb(0xFF40) & (1 << 3)) == 0;
-
-        let tile_set_addr = match is_tile_set_0 {
-            true => 0x9000 as u16,
-            false => 0x8000 as u16
-        };
-
-        let tile_map_addr = match is_tile_map_0 {
-            true => 0x9800 as u16,
-            false => 0x9C00 as u16
-        };
-
         let screen_y = line;
         let scroll_y = self.rb(0xFF42);
         let scroll_x = self.rb(0xFF43);
 
         let buffer_y = line + scroll_y;
 
-        for screen_x in 0..160 {
-            let buffer_x = scroll_x as u16 + screen_x;
+        // Background rendering
+        if (self.rb(0xFF40) & (1 << 0)) != 0 {
+            let is_tile_set_0 = (self.rb(0xFF40) & (1 << 4)) == 0;
+            let is_tile_map_0 = (self.rb(0xFF40) & (1 << 3)) == 0;
 
-            let tile_y = buffer_y / 8;
-            let tile_x = buffer_x / 8;
-            let tile_id_addr = tile_map_addr + (tile_y as u16) * 32 + (tile_x as u16);
-            assert!(
-                if is_tile_map_0 {
-                    0x9800 <= tile_id_addr && tile_id_addr <= 0x9BFF
-                } else {
-                    0x9C00 <= tile_id_addr && tile_id_addr <= 0x9FFF
-                });
-
-            let tile_id = self.rb(tile_id_addr);
-
-            let ly = buffer_y % 8;
-            let lx = buffer_x % 8;
-
-            // Signed case is also covered by wrapping_add.
-            let tile_id_u16 = match is_tile_set_0 {
-                true => expand_to_u16_retaining_sign(tile_id),
-                false => tile_id as u16,
+            let tile_set_addr = match is_tile_set_0 {
+                true => 0x9000 as u16,
+                false => 0x8000 as u16
             };
-            // 16 bytes per 1 tile.
-            // FIXME: Can we use wrapping_mul?
-            let mut tile_addr_offset = 0 as u16;
-            for _ in 0..16 {
-                tile_addr_offset = tile_addr_offset.wrapping_add(tile_id_u16);
+
+            let tile_map_addr = match is_tile_map_0 {
+                true => 0x9800 as u16,
+                false => 0x9C00 as u16
+            };
+
+            for screen_x in 0..160 {
+                let buffer_x = scroll_x as u16 + screen_x;
+
+                let tile_y = buffer_y / 8;
+                let tile_x = buffer_x / 8;
+                let tile_id_addr = tile_map_addr + (tile_y as u16) * 32 + (tile_x as u16);
+                assert!(
+                    if is_tile_map_0 {
+                        0x9800 <= tile_id_addr && tile_id_addr <= 0x9BFF
+                    } else {
+                        0x9C00 <= tile_id_addr && tile_id_addr <= 0x9FFF
+                    });
+
+                let tile_id = self.rb(tile_id_addr);
+
+                let ly = buffer_y % 8;
+                let lx = buffer_x % 8;
+
+                // Signed case is also covered by wrapping_add.
+                let tile_id_u16 = match is_tile_set_0 {
+                    true => expand_to_u16_retaining_sign(tile_id),
+                    false => tile_id as u16,
+                };
+                // 16 bytes per 1 tile.
+                // FIXME: Can we use wrapping_mul?
+                let mut tile_addr_offset = 0 as u16;
+                for _ in 0..16 {
+                    tile_addr_offset = tile_addr_offset.wrapping_add(tile_id_u16);
+                }
+                let tile_addr = tile_set_addr.wrapping_add(tile_addr_offset);
+                assert!(0x8000 <= tile_addr && tile_addr <= 0x97FF);
+
+                // 2 bytes consist of 1 line.
+                let line_addr1 = tile_addr + (2 * ly as u16);
+                let line_addr2 = line_addr1 + 1;
+                assert!(
+                    if is_tile_set_0 {
+                        0x8800 <= line_addr1 && line_addr1 <= 0x97FF &&
+                        0x8800 <= line_addr2 && line_addr2 <= 0x97FF
+                    } else {
+                        0x8000 <= line_addr1 && line_addr1 <= 0x8FFF &&
+                        0x8000 <= line_addr2 && line_addr2 <= 0x8FFF
+                    });
+
+                let line_val1 = self.rb(line_addr1);
+                let line_val2 = self.rb(line_addr2);
+                let rlx = 7 - lx;
+                let val = ((((line_val1 & (1 << rlx)) >> rlx) << 1) + ((line_val2 & (1 << rlx)) >> rlx)) as u8;
+                self.gpu_screen[(160 * (screen_y as u16) + (screen_x as u16)) as usize] = val;
             }
-            let tile_addr = tile_set_addr.wrapping_add(tile_addr_offset);
-            assert!(0x8000 <= tile_addr && tile_addr <= 0x97FF);
-
-            // 2 bytes consist of 1 line.
-            let line_addr1 = tile_addr + (2 * ly as u16);
-            let line_addr2 = line_addr1 + 1;
-            assert!(
-                if is_tile_set_0 {
-                    0x8800 <= line_addr1 && line_addr1 <= 0x97FF &&
-                    0x8800 <= line_addr2 && line_addr2 <= 0x97FF
-                } else {
-                    0x8000 <= line_addr1 && line_addr1 <= 0x8FFF &&
-                    0x8000 <= line_addr2 && line_addr2 <= 0x8FFF
-                });
-
-            let line_val1 = self.rb(line_addr1);
-            let line_val2 = self.rb(line_addr2);
-            let rlx = 7 - lx;
-            let val = ((((line_val1 & (1 << rlx)) >> rlx) << 1) + ((line_val2 & (1 << rlx)) >> rlx)) as u8;
-            self.gpu_screen[(160 * (screen_y as u16) + (screen_x as u16)) as usize] = val;
         }
+
+        if (self.rb(0xFF40) & (1 << 1)) != 0 {
+            for sprite in 0..40 {
+                let addr = 0xFE00 + 4 * sprite;
+                let sprite_screen_y = (self.rb(addr) as i16) - 16;
+                let sprite_screen_x = (self.rb(addr + 1) as i16) - 8;
+
+                let inside_of_line = sprite_screen_y <= (screen_y as i16) && (screen_y as i16) < (sprite_screen_y + 8);
+                if inside_of_line {
+                    // TODO: Palette
+                    // TODO: Flip
+                    for x in 0..8 {
+                        let sx = sprite_screen_x + x;
+                        if 0 <= sx && sx < 160 {
+                            // TODO: Read value
+                            self.gpu_screen[(160 * (screen_y as u16) + (sx as u16)) as usize] = 1;
+                        }
+                    }
+                }
+            }
+        }
+
     }
 
     fn gpu_step(&mut self, c: u8) {
