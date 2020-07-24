@@ -1556,14 +1556,17 @@ impl SystemOnChip {
                                 },
                                 // BGP
                                 0xFF47 => {
+                                    eprintln!("Read of BGP is not implemented");
                                     0
                                 },
                                 // OBP0
                                 0xFF48 => {
+                                    eprintln!("Read of OBP0 is not implemented");
                                     0
                                 },
                                 // OBP1
                                 0xFF49 => {
+                                    eprintln!("Read of OBP1 is not implemented");
                                     0
                                 },
                                 _ => {
@@ -1666,12 +1669,15 @@ impl SystemOnChip {
                                 },
                                 // BGP
                                 0xFF47 => {
+                                    eprintln!("Write of BGP is not implemented");
                                 },
                                 // OBP0
                                 0xFF48 => {
+                                    eprintln!("Write of OBP0 is not implemented");
                                 },
                                 // OBP1
                                 0xFF49 => {
+                                    eprintln!("Write of OBP1 is not implemented");
                                 },
                                 // ?
                                 0xFF50 => {
@@ -1886,7 +1892,7 @@ impl SystemOnChip {
         let buffer_y = line + scroll_y;
 
         for screen_x in 0..160 {
-            let buffer_x = scroll_x + screen_x;
+            let buffer_x = scroll_x as u16 + screen_x;
 
             let tile_y = buffer_y / 8;
             let tile_x = buffer_x / 8;
