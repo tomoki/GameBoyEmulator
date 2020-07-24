@@ -71,10 +71,10 @@ fn main() {
                                         let v = screen_data[160 * y + x];
                                         let c = match v {
                                             0 => [1.0, 1.0, 1.0, 1.0],
-                                            1 => [0.666, 0.666, 0.666, 0.666],
-                                            2 => [0.333, 0.333, 0.333, 0.333],
-                                            3 => [0.0, 0.0, 0.0, 0.0],
-                                            _ => [0.0, 0.0, 0.0, 0.0]
+                                            1 => [0.666, 0.666, 0.666, 1.0],
+                                            2 => [0.333, 0.333, 0.333, 1.0],
+                                            3 => [0.0, 0.0, 0.0, 1.0],
+                                            _ => panic!()
                                         };
                                         let lx = (x as u32 * scale) as f64;
                                         let rx = ((x as u32 + 1) * scale) as f64;
@@ -88,7 +88,7 @@ fn main() {
                         },
                         Loop::Update(args) => {
                             // FIXME: Remove this "for" when it runs faster than gameboy
-                            for _ in 0..10 {
+                            for _ in 0..40 {
                                 soc.step_seconds(args.dt);
                             }
                         }
