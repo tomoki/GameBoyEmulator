@@ -1232,6 +1232,23 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
+    // 0xCA
+    // JP Z, d16
+    // Affect: - - - -
+    // CPU Clock: 16/12
+    // Bytes: 3
+    fn jp_z_d16(&mut self) -> () {
+        let addr = self.read_u16_pc();
+        let jump = self.flag_is_set(FLAG_ZERO);
+
+        if jump {
+            self.write_r16(Register::PC, addr);
+            self.set_proc_clock(16);
+        } else {
+            self.set_proc_clock(12);
+        }
+    }
+
     // 0xCD
     // CALL a16
     // Affect: - - - -
@@ -1820,6 +1837,7 @@ impl SystemOnChip {
             0xC3 => self.jp_d16(),
             0xC5 => self.push_bc(),
             0xC9 => self.ret(),
+            0xCA => self.jp_z_d16(),
             0xCD => self.call_a16(),
             0xD9 => self.reti(),
             0xE0 => self.ldh_addr_n_a(),
