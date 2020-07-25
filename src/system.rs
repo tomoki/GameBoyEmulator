@@ -381,10 +381,11 @@ impl SystemOnChip {
 
     // LD X, Y
     // Affect: - - - -
-    // CPU Clock: -
+    // CPU Clock: 4
     // Bytes: 1
     fn ld_x_y(&mut self, x: Register, y: Register) -> () {
-        self.write_r8(x, self.read_r8(y))
+        self.write_r8(x, self.read_r8(y));
+        self.set_proc_clock(4);
     }
 
     // PUSH XY
@@ -884,106 +885,6 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
-    // 0x47
-    // LD B, A
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_b_a(&mut self) -> () {
-        self.ld_x_y(Register::B, Register::A);
-        self.set_proc_clock(4);
-    }
-
-    // 0x4F
-    // LD C, A
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_c_a(&mut self) -> () {
-        self.ld_x_y(Register::C, Register::A);
-        self.set_proc_clock(4);
-    }
-
-    // 0x54
-    // LD D, H
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_d_h(&mut self) -> () {
-        self.ld_x_y(Register::D, Register::H);
-        self.set_proc_clock(4);
-    }
-
-    // 0x57
-    // LD D, A
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_d_a(&mut self) -> () {
-        self.ld_x_y(Register::D, Register::A);
-        self.set_proc_clock(4);
-    }
-
-    // 0x5D
-    // LD E, L
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_e_l(&mut self) -> () {
-        self.ld_x_y(Register::E, Register::L);
-        self.set_proc_clock(4);
-    }
-
-    // 0x5F
-    // LD E, A
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_e_a(&mut self) -> () {
-        self.ld_x_y(Register::E, Register::A);
-        self.set_proc_clock(4);
-    }
-
-    // 0x62
-    // LD H, D
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_h_d(&mut self) -> () {
-        self.ld_x_y(Register::H, Register::D);
-        self.set_proc_clock(4);
-    }
-
-    // 0x67
-    // LD H, A
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_h_a(&mut self) -> () {
-        self.ld_x_y(Register::H, Register::A);
-        self.set_proc_clock(4);
-    }
-
-    // 0x6B
-    // LD L, E
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_l_e(&mut self) -> () {
-        self.ld_x_y(Register::L, Register::E);
-        self.set_proc_clock(4);
-    }
-
-    // 0x6F
-    // LD L, A
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_l_a(&mut self) -> () {
-        self.ld_x_y(Register::L, Register::A);
-        self.set_proc_clock(4);
-    }
-
     // 0x70
     // LD (HL), B
     // Affect - - - -
@@ -1017,66 +918,6 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
-    // 0x78
-    // LD A, B
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_a_b(&mut self) -> () {
-        self.ld_x_y(Register::A, Register::B);
-        self.set_proc_clock(4);
-    }
-
-    // 0x79
-    // LD A, C
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_a_c(&mut self) -> () {
-        self.ld_x_y(Register::A, Register::C);
-        self.set_proc_clock(4);
-    }
-
-    // 0x7A
-    // LD A, D
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_a_d(&mut self) -> () {
-        self.ld_x_y(Register::A, Register::D);
-        self.set_proc_clock(4);
-    }
-
-    // 0x7B
-    // LD A, E
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_a_e(&mut self) -> () {
-        self.ld_x_y(Register::A, Register::E);
-        self.set_proc_clock(4);
-    }
-
-    // 0x7C
-    // LD A, H
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_a_h(&mut self) -> () {
-        self.ld_x_y(Register::A, Register::H);
-        self.set_proc_clock(4);
-    }
-
-    // 0x7D
-    // LD A, H
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_a_l(&mut self) -> () {
-        self.ld_x_y(Register::A, Register::L);
-        self.set_proc_clock(4);
-    }
-
     // 0x1A
     // LD A, (HL)
     // Affect: - - - -
@@ -1085,16 +926,6 @@ impl SystemOnChip {
     fn ld_a_addr_hl(&mut self) -> () {
         self.ld_a_addr_xy(Register::H, Register::L);
         self.set_proc_clock(8);
-    }
-
-    // 0x7F
-    // LD A, A
-    // Affect: - - - -
-    // CPU Clock: 4
-    // Bytes: 1
-    fn ld_a_a(&mut self) -> () {
-        self.ld_x_y(Register::A, Register::A);
-        self.set_proc_clock(4);
     }
 
     // 0x80
@@ -2029,27 +1860,27 @@ impl SystemOnChip {
             0x3C => self.inc_x(Register::A),
             0x3D => self.dec_x(Register::A),
             0x3E => self.ld_a_d8(),
-            0x47 => self.ld_b_a(),
-            0x4F => self.ld_c_a(),
-            0x54 => self.ld_d_h(),
-            0x57 => self.ld_d_a(),
-            0x5D => self.ld_e_l(),
-            0x5F => self.ld_e_a(),
-            0x62 => self.ld_h_d(),
-            0x67 => self.ld_h_a(),
-            0x6B => self.ld_l_e(),
-            0x6F => self.ld_l_a(),
+            0x47 => self.ld_x_y(Register::B, Register::A),
+            0x4F => self.ld_x_y(Register::C, Register::A),
+            0x54 => self.ld_x_y(Register::D, Register::H),
+            0x57 => self.ld_x_y(Register::D, Register::A),
+            0x5D => self.ld_x_y(Register::E, Register::L),
+            0x5F => self.ld_x_y(Register::E, Register::A),
+            0x62 => self.ld_x_y(Register::H, Register::D),
+            0x67 => self.ld_x_y(Register::H, Register::A),
+            0x6B => self.ld_x_y(Register::L, Register::E),
+            0x6F => self.ld_x_y(Register::L, Register::A),
             0x70 => self.ld_addr_hl_b(),
             0x71 => self.ld_addr_hl_c(),
             0x77 => self.ld_addr_hl_a(),
-            0x78 => self.ld_a_b(),
-            0x79 => self.ld_a_c(),
-            0x7A => self.ld_a_d(),
-            0x7B => self.ld_a_e(),
-            0x7C => self.ld_a_h(),
-            0x7D => self.ld_a_l(),
+            0x78 => self.ld_x_y(Register::A, Register::B),
+            0x79 => self.ld_x_y(Register::A, Register::C),
+            0x7A => self.ld_x_y(Register::A, Register::D),
+            0x7B => self.ld_x_y(Register::A, Register::E),
+            0x7C => self.ld_x_y(Register::A, Register::H),
+            0x7D => self.ld_x_y(Register::A, Register::L),
             0x7E => self.ld_a_addr_hl(),
-            0x7F => self.ld_a_a(),
+            0x7F => self.ld_x_y(Register::A, Register::A),
             0x80 => self.add_a_b(),
             0x86 => self.add_addr_hl(),
             0x90 => self.sub_b(),
