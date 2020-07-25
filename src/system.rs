@@ -552,6 +552,23 @@ impl SystemOnChip {
         self.set_proc_clock(4);
     }
 
+    // ADD A X
+    // Affect: Z 0 H C
+    // CPU Clock: 4
+    // Bytes: 1
+    fn add_a_x(&mut self, x: Register) -> () {
+        let prev = self.read_r8(Register::A);
+        let next = prev.wrapping_add(self.read_r8(x));
+        self.write_r8(Register::A, next);
+
+        self.flag_clear();
+        self.flag_set(FLAG_ZERO, self.read_r8(Register::A) == 0);
+        self.flag_set(FLAG_CARRY, prev > self.read_r8(Register::A));
+        // FIXME: How about half carry?
+
+        self.set_proc_clock(4);
+    }
+
     // CP d8
     // Affect: Z, 1, H, C
     // CPU Clock: -
@@ -918,24 +935,6 @@ impl SystemOnChip {
     fn ld_a_addr_hl(&mut self) -> () {
         self.ld_a_addr_xy(Register::H, Register::L);
         self.set_proc_clock(8);
-    }
-
-    // 0x80
-    // ADD A, B
-    // Affect: Z 0 H C
-    // CPU Clock: 4
-    // Bytes: 1
-    fn add_a_b(&mut self) -> () {
-        let prev = self.read_r8(Register::A);
-        let next = prev.wrapping_add(self.read_r8(Register::B));
-        self.write_r8(Register::A, next);
-
-        self.flag_clear();
-        self.flag_set(FLAG_ZERO, self.read_r8(Register::A) == 0);
-        self.flag_set(FLAG_CARRY, prev > self.read_r8(Register::A));
-        // FIXME: How about half carry?
-
-        self.set_proc_clock(4);
     }
 
     // 0x86
@@ -1850,12 +1849,12 @@ impl SystemOnChip {
             0x7D => self.ld_x_y(Register::A, Register::L),
             0x7E => self.ld_a_addr_hl(),
             0x7F => self.ld_x_y(Register::A, Register::A),
-            0x80 => self.add_a_b(),
-            0x81 => unimplemented!(),
-            0x82 => unimplemented!(),
-            0x83 => unimplemented!(),
-            0x84 => unimplemented!(),
-            0x85 => unimplemented!(),
+            0x80 => self.add_a_x(Register::B),
+            0x81 => self.add_a_x(Register::C),
+            0x82 => self.add_a_x(Register::D),
+            0x83 => self.add_a_x(Register::E),
+            0x84 => self.add_a_x(Register::H),
+            0x85 => self.add_a_x(Register::L),
             0x86 => self.add_addr_hl(),
             0x87 => unimplemented!(),
             0x88 => unimplemented!(),
