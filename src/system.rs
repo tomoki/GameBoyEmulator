@@ -709,16 +709,6 @@ impl SystemOnChip {
         self.jr_pred_r8(true);
     }
 
-    // 0x19
-    // ADD HL, DE
-    // Affect: - 0 H C
-    // CPU Clock: 8
-    // Bytes: 1
-    fn add_hl_de(&mut self) -> () {
-        self.add_wx_yz(Register::H, Register::L, Register::D, Register::E);
-        self.set_proc_clock(8);
-    }
-
     // 0x1A
     // LD A, (DE)
     // Affect: - - - -
@@ -1741,7 +1731,7 @@ impl SystemOnChip {
             0x06 => self.ld_b_d8(),
             0x07 => unimplemented!(),
             0x08 => unimplemented!(),
-            0x09 => unimplemented!(),
+            0x09 => self.add_wx_yz(Register::H, Register::L, Register::B, Register::C),
             0x0A => self.ld_a_addr_bc(),
             0x0B => unimplemented!(),
             0x0C => self.inc_x(Register::C),
@@ -1757,7 +1747,7 @@ impl SystemOnChip {
             0x16 => self.ld_d_d8(),
             0x17 => self.rla(),
             0x18 => self.jr_r8(),
-            0x19 => self.add_hl_de(),
+            0x19 => self.add_wx_yz(Register::H, Register::L, Register::D, Register::E),
             0x1A => self.ld_a_addr_de(),
             0x1B => unimplemented!(),
             0x1C => self.inc_x(Register::E),
@@ -1773,7 +1763,7 @@ impl SystemOnChip {
             0x26 => self.ld_h_d8(),
             0x27 => unimplemented!(),
             0x28 => self.jr_z_r8(),
-            0x29 => unimplemented!(),
+            0x29 => self.add_wx_yz(Register::H, Register::L, Register::H, Register::L),
             0x2A => self.ld_a_addr_hl_plus(),
             0x2B => unimplemented!(),
             0x2C => self.inc_x(Register::L),
