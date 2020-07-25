@@ -967,16 +967,6 @@ impl SystemOnChip {
         self.set_proc_clock(4);
     }
 
-    // 0x90
-    // SUB B
-    // Affect: Z 1 H C
-    // CPU Clock: 4
-    // Bytes 1
-    fn sub_b(&mut self) -> () {
-        self.sub_x(Register::B);
-        self.set_proc_clock(4);
-    }
-
     // 0xAF
     // XOR A
     // Affect: Z 0 0 0
