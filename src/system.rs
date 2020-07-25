@@ -687,6 +687,22 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
+    // XOR X
+    // Affect: Z 0 0 0
+    // CPU Clock: 4
+    // Bytes: 1
+    fn xor_x(&mut self, x: Register) -> () {
+        let prev = self.read_r8(Register::A);
+        let val = self.read_r8(x);
+        let next = prev ^ val;
+        self.write_r8(Register::A, next);
+
+        self.flag_clear();
+        self.flag_set(Flag::Zero, next == 0);
+
+        self.set_proc_clock(4);
+    }
+
     // actual functions
 
     // 0x00
@@ -983,22 +999,6 @@ impl SystemOnChip {
         self.flag_set(Flag::Zero, self.read_r8(Register::A) == 0);
         self.flag_set(Flag::Carry, prev > self.read_r8(Register::A));
         // FIXME: How about half carry?
-
-        self.set_proc_clock(4);
-    }
-
-    // 0xAF
-    // XOR A
-    // Affect: Z 0 0 0
-    // CPU Clock: 4
-    // Bytes: 1
-    fn xor_a(&mut self) -> () {
-        let prev = self.read_r8(Register::A);
-        let next = prev ^ prev;
-        self.write_r8(Register::A, next);
-
-        self.flag_clear();
-        self.flag_set(Flag::Zero, self.read_r8(Register::A) == 0);
 
         self.set_proc_clock(4);
     }
@@ -1920,14 +1920,14 @@ impl SystemOnChip {
             0xA5 => self.and_x(Register::L),
             0xA6 => unimplemented!(),
             0xA7 => self.and_x(Register::A),
-            0xA8 => unimplemented!(),
-            0xA9 => unimplemented!(),
-            0xAA => unimplemented!(),
-            0xAB => unimplemented!(),
-            0xAC => unimplemented!(),
-            0xAD => unimplemented!(),
+            0xA8 => self.xor_x(Register::B),
+            0xA9 => self.xor_x(Register::C),
+            0xAA => self.xor_x(Register::D),
+            0xAB => self.xor_x(Register::E),
+            0xAC => self.xor_x(Register::H),
+            0xAD => self.xor_x(Register::L),
             0xAE => unimplemented!(),
-            0xAF => self.xor_a(),
+            0xAF => self.xor_x(Register::A),
             0xB0 => self.or_x(Register::B),
             0xB1 => self.or_x(Register::C),
             0xB2 => self.or_x(Register::D),
