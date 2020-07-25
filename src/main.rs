@@ -84,6 +84,30 @@ fn main() {
                                         ButtonState::Release => soc.set_button_down(false)
                                     }
                                 }
+                                Button::Keyboard(Key::Z) => {
+                                    match args.state {
+                                        ButtonState::Press => soc.set_button_a(true),
+                                        ButtonState::Release => soc.set_button_a(false)
+                                    }
+                                }
+                                Button::Keyboard(Key::X) => {
+                                    match args.state {
+                                        ButtonState::Press => soc.set_button_b(true),
+                                        ButtonState::Release => soc.set_button_b(false)
+                                    }
+                                }
+                                Button::Keyboard(Key::Return) => {
+                                    match args.state {
+                                        ButtonState::Press => soc.set_button_start(true),
+                                        ButtonState::Release => soc.set_button_start(false)
+                                    }
+                                }
+                                Button::Keyboard(Key::Space) => {
+                                    match args.state {
+                                        ButtonState::Press => soc.set_button_select(true),
+                                        ButtonState::Release => soc.set_button_select(false)
+                                    }
+                                }
                                 _ => {
                                 }
                             }
@@ -120,7 +144,7 @@ fn main() {
                         },
                         Loop::Update(args) => {
                             // FIXME: Remove this "for" when it runs faster than gameboy
-                            for _ in 0..40 {
+                            for _ in 0..1 {
                                 soc.step_seconds(args.dt);
                             }
                         }

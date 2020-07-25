@@ -2581,6 +2581,14 @@ impl SystemOnChip {
         self.joypad.down = pressed;
     }
 
+    pub fn set_button_start(&mut self, pressed: bool) -> () {
+        self.joypad.start = pressed;
+    }
+
+    pub fn set_button_select(&mut self, pressed: bool) -> () {
+        self.joypad.select = pressed;
+    }
+
     // debug functions
     fn dump_registers(&self) -> () {
         // A, B, C, D, E, H, L, F, PC, SP, LT
