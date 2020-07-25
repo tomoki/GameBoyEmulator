@@ -548,6 +548,23 @@ impl SystemOnChip {
         }
     }
 
+    // CALL PRED, a16
+    // Affect: - - - -
+    // CPU Clock: 24/12
+    // Bytes: 3
+    fn call_pred_a16(&mut self, flag: Flag, positive: bool) -> () {
+        let addr = self.read_u16_pc();
+        let should_jump = if self.flag_is_set(flag) { positive } else { !positive };
+
+        if should_jump {
+            self.push_u16(self.read_r16(Register::PC));
+            self.write_r16(Register::PC, addr);
+            self.set_proc_clock(24);
+        } else {
+            self.set_proc_clock(12);
+        }
+    }
+
     // SUB X
     // Affect: Z 1 H C
     // CPU Clock: 4
@@ -1931,7 +1948,7 @@ impl SystemOnChip {
             0xC1 => self.pop_bc(),
             0xC2 => self.jp_nz_d16(),
             0xC3 => self.jp_d16(),
-            0xC4 => unimplemented!(),
+            0xC4 => self.call_pred_a16(Flag::Zero, false),
             0xC5 => self.push_bc(),
             0xC6 => self.add_a_d8(),
             0xC7 => unimplemented!(),
@@ -1939,7 +1956,7 @@ impl SystemOnChip {
             0xC9 => self.ret(),
             0xCA => self.jp_z_d16(),
             // 0xCB is Prefix function.
-            0xCC => unimplemented!(),
+            0xCC => self.call_pred_a16(Flag::Zero, true),
             0xCD => self.call_a16(),
             0xCE => unimplemented!(),
             0xCF => unimplemented!(),
@@ -1947,7 +1964,7 @@ impl SystemOnChip {
             0xD1 => self.pop_de(),
             0xD2 => unimplemented!(),
             0xD3 => unimplemented!(),
-            0xD4 => unimplemented!(),
+            0xD4 => self.call_pred_a16(Flag::Carry, false),
             0xD5 => self.push_de(),
             0xD6 => unimplemented!(),
             0xD7 => unimplemented!(),
@@ -1955,7 +1972,7 @@ impl SystemOnChip {
             0xD9 => self.reti(),
             0xDA => unimplemented!(),
             0xDB => unimplemented!(),
-            0xDC => unimplemented!(),
+            0xDC => self.call_pred_a16(Flag::Carry, true),
             0xDD => unimplemented!(),
             0xDE => unimplemented!(),
             0xDF => unimplemented!(),
