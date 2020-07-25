@@ -30,10 +30,11 @@ struct Regs {
     t : u32,
 }
 
-const FLAG_ZERO : u8 = 1 << 7;
-const FLAG_N : u8 = 1 << 6;
-const FLAG_HALF_CARRY : u8 = 1 << 5;
-const FLAG_CARRY : u8 = 1 << 4;
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum Flag {
+    Zero, N, HalfCarry, Carry
+}
 
 impl Regs {
     fn new() -> Regs {
@@ -219,17 +220,30 @@ impl SystemOnChip {
         self.write_r8(Register::F, 0);
     }
 
-    fn flag_set(&mut self, flag: u8, set: bool) -> () {
+    fn flag_set(&mut self, flag: Flag, set: bool) -> () {
         let cur = self.read_r8(Register::F);
+        let bit = match flag {
+            Flag::Zero      => (1 << 7),
+            Flag::N         => (1 << 6),
+            Flag::HalfCarry => (1 << 5),
+            Flag::Carry     => (1 << 4)
+        };
+
         if set {
-            self.write_r8(Register::F, cur | flag);
+            self.write_r8(Register::F, cur | bit);
         } else {
-            self.write_r8(Register::F, cur & !flag);
+            self.write_r8(Register::F, cur & !bit);
         }
     }
 
-    fn flag_is_set(&mut self, flag: u8) -> bool {
-        (self.read_r8(Register::F) & flag) != 0
+    fn flag_is_set(&mut self, flag: Flag) -> bool {
+        let val = self.read_r8(Register::F);
+        match flag {
+            Flag::Zero      => val & (1 << 7) != 0,
+            Flag::N         => val & (1 << 6) != 0,
+            Flag::HalfCarry => val & (1 << 5) != 0,
+            Flag::Carry     => val & (1 << 4) != 0
+        }
     }
 
     fn read_r8(&self, r: Register) -> u8 {
@@ -423,12 +437,12 @@ impl SystemOnChip {
     // Bytes: 2
     fn rl_x(&mut self, x: Register) -> () {
         let n = self.read_r8(x);
-        let old_carry_flag = self.flag_is_set(FLAG_CARRY);
+        let old_carry_flag = self.flag_is_set(Flag::Carry);
 
-        self.flag_set(FLAG_ZERO, n == 0);
-        self.flag_set(FLAG_N, false);
-        self.flag_set(FLAG_HALF_CARRY, false);
-        self.flag_set(FLAG_CARRY, (n & (1 << 7)) != 0);
+        self.flag_set(Flag::Zero, n == 0);
+        self.flag_set(Flag::N, false);
+        self.flag_set(Flag::HalfCarry, false);
+        self.flag_set(Flag::Carry, (n & (1 << 7)) != 0);
 
         self.write_r8(x, (n << 1) | (if old_carry_flag { 1 } else { 0 }));
     }
@@ -442,10 +456,10 @@ impl SystemOnChip {
         let next = prev << 1;
         let has_carry = (prev & (1 << 7)) != 0;
 
-        self.flag_set(FLAG_ZERO, next == 0);
-        self.flag_set(FLAG_N, false);
-        self.flag_set(FLAG_HALF_CARRY, false);
-        self.flag_set(FLAG_CARRY, has_carry);
+        self.flag_set(Flag::Zero, next == 0);
+        self.flag_set(Flag::N, false);
+        self.flag_set(Flag::HalfCarry, false);
+        self.flag_set(Flag::Carry, has_carry);
 
         self.write_r8(x, next);
     }
@@ -468,10 +482,10 @@ impl SystemOnChip {
     fn inc_x(&mut self, x: Register) -> () {
         let n = self.read_r8(x);
 
-        self.flag_set(FLAG_ZERO, n == 0xFF);
-        self.flag_set(FLAG_N, false);
+        self.flag_set(Flag::Zero, n == 0xFF);
+        self.flag_set(Flag::N, false);
         // 1 if carry from bit 3 == bit 0 ~ bit 3 is 1.
-        self.flag_set(FLAG_HALF_CARRY, (n & 0x0F) == 0x0F);
+        self.flag_set(Flag::HalfCarry, (n & 0x0F) == 0x0F);
 
         self.write_r8(x, n.wrapping_add(1));
         self.set_proc_clock(4);
@@ -484,10 +498,10 @@ impl SystemOnChip {
     fn dec_x(&mut self, x: Register) -> () {
         let n = self.read_r8(x);
 
-        self.flag_set(FLAG_ZERO, n == 1);
-        self.flag_set(FLAG_N, true);
+        self.flag_set(Flag::Zero, n == 1);
+        self.flag_set(Flag::N, true);
         // 1 if borrow from bit 4 == bit 0 ~ bit 3 is 0.
-        self.flag_set(FLAG_HALF_CARRY, (n & 0x0F) == 0);
+        self.flag_set(Flag::HalfCarry, (n & 0x0F) == 0);
 
         self.write_r8(x, n.wrapping_sub(1));
         self.set_proc_clock(4);
@@ -544,8 +558,8 @@ impl SystemOnChip {
         self.write_r8(Register::A, n.wrapping_sub(o));
 
         // FIXME: Use 2 complement?
-        self.flag_set(FLAG_ZERO, n == o);
-        self.flag_set(FLAG_N, true);
+        self.flag_set(Flag::Zero, n == o);
+        self.flag_set(Flag::N, true);
 
         // FIXME: How about half carry and carry?
 
@@ -562,8 +576,8 @@ impl SystemOnChip {
         self.write_r8(Register::A, next);
 
         self.flag_clear();
-        self.flag_set(FLAG_ZERO, self.read_r8(Register::A) == 0);
-        self.flag_set(FLAG_CARRY, prev > self.read_r8(Register::A));
+        self.flag_set(Flag::Zero, self.read_r8(Register::A) == 0);
+        self.flag_set(Flag::Carry, prev > self.read_r8(Register::A));
         // FIXME: How about half carry?
 
         self.set_proc_clock(4);
@@ -577,11 +591,11 @@ impl SystemOnChip {
         // This is basically A - n
         let a = self.read_r8(Register::A);
 
-        self.flag_set(FLAG_ZERO, a == n);
-        self.flag_set(FLAG_N, true);
+        self.flag_set(Flag::Zero, a == n);
+        self.flag_set(Flag::N, true);
         // FIXME: Is this correct?
-        self.flag_set(FLAG_HALF_CARRY, (a & 0x0F) < (n & 0x0F));
-        self.flag_set(FLAG_CARRY, a < n);
+        self.flag_set(Flag::HalfCarry, (a & 0x0F) < (n & 0x0F));
+        self.flag_set(Flag::Carry, a < n);
     }
 
     // SWAP x
@@ -594,7 +608,7 @@ impl SystemOnChip {
         self.write_r8(r, next);
 
         self.flag_clear();
-        self.flag_set(FLAG_ZERO, prev == 0);
+        self.flag_set(Flag::Zero, prev == 0);
         self.set_proc_clock(8);
     }
 
@@ -609,7 +623,7 @@ impl SystemOnChip {
         self.write_r8(Register::A, res);
 
         self.flag_clear();
-        self.flag_set(FLAG_ZERO, res == 0);
+        self.flag_set(Flag::Zero, res == 0);
         self.set_proc_clock(4);
     }
 
@@ -624,8 +638,8 @@ impl SystemOnChip {
         self.write_r8(Register::A, res);
 
         self.flag_clear();
-        self.flag_set(FLAG_ZERO, res == 0);
-        self.flag_set(FLAG_HALF_CARRY, true);
+        self.flag_set(Flag::Zero, res == 0);
+        self.flag_set(Flag::HalfCarry, true);
         self.set_proc_clock(4);
     }
 
@@ -635,9 +649,9 @@ impl SystemOnChip {
     // Bytes: 2
     fn bit_n_x(&mut self, n : u8, r: Register) -> () {
         let s = self.read_r8(r) & (1 << n) == 0;
-        self.flag_set(FLAG_ZERO, s);
-        self.flag_set(FLAG_N, false);
-        self.flag_set(FLAG_HALF_CARRY, true);
+        self.flag_set(Flag::Zero, s);
+        self.flag_set(Flag::N, false);
+        self.flag_set(Flag::HalfCarry, true);
         self.set_proc_clock(8);
     }
 
@@ -752,7 +766,7 @@ impl SystemOnChip {
     // CPU Clock: 12/8
     // Bytes: 2
     fn jr_nz_r8(&mut self) -> () {
-        let pred = !self.flag_is_set(FLAG_ZERO);
+        let pred = !self.flag_is_set(Flag::Zero);
         self.jr_pred_r8(pred);
     }
 
@@ -786,7 +800,7 @@ impl SystemOnChip {
     // CPU Clock: 12/8
     // Bytes: 2
     fn jr_z_r8(&mut self) -> () {
-        let pred = self.flag_is_set(FLAG_ZERO);
+        let pred = self.flag_is_set(Flag::Zero);
         self.jr_pred_r8(pred);
     }
 
@@ -823,8 +837,8 @@ impl SystemOnChip {
         let val = !prev;
         self.write_r8(Register::A, val);
 
-        self.flag_set(FLAG_N, true);
-        self.flag_set(FLAG_HALF_CARRY, true);
+        self.flag_set(Flag::N, true);
+        self.flag_set(Flag::HalfCarry, true);
 
         self.set_proc_clock(4);
     }
@@ -865,9 +879,9 @@ impl SystemOnChip {
         let next = prev.wrapping_sub(1);
 
         // FIXME:
-        self.flag_set(FLAG_ZERO, next == 0);
-        self.flag_set(FLAG_N, true);
-        self.flag_set(FLAG_HALF_CARRY, (prev & (1 << 4)) != 0 && (next & (1 << 4) == 0));
+        self.flag_set(Flag::Zero, next == 0);
+        self.flag_set(Flag::N, true);
+        self.flag_set(Flag::HalfCarry, (prev & (1 << 4)) != 0 && (next & (1 << 4) == 0));
 
         self.set_proc_clock(12);
     }
@@ -949,8 +963,8 @@ impl SystemOnChip {
         self.write_r8(Register::A, next);
 
         self.flag_clear();
-        self.flag_set(FLAG_ZERO, self.read_r8(Register::A) == 0);
-        self.flag_set(FLAG_CARRY, prev > self.read_r8(Register::A));
+        self.flag_set(Flag::Zero, self.read_r8(Register::A) == 0);
+        self.flag_set(Flag::Carry, prev > self.read_r8(Register::A));
         // FIXME: How about half carry?
 
         self.set_proc_clock(4);
@@ -967,7 +981,7 @@ impl SystemOnChip {
         self.write_r8(Register::A, next);
 
         self.flag_clear();
-        self.flag_set(FLAG_ZERO, self.read_r8(Register::A) == 0);
+        self.flag_set(Flag::Zero, self.read_r8(Register::A) == 0);
 
         self.set_proc_clock(4);
     }
@@ -1001,7 +1015,7 @@ impl SystemOnChip {
     // Bytes: 3
     fn jp_nz_d16(&mut self) -> () {
         let addr = self.read_u16_pc();
-        let jump = !self.flag_is_set(FLAG_ZERO);
+        let jump = !self.flag_is_set(Flag::Zero);
 
         if jump {
             self.write_r16(Register::PC, addr);
@@ -1050,7 +1064,7 @@ impl SystemOnChip {
     // Bytes: 3
     fn jp_z_d16(&mut self) -> () {
         let addr = self.read_u16_pc();
-        let jump = self.flag_is_set(FLAG_ZERO);
+        let jump = self.flag_is_set(Flag::Zero);
 
         if jump {
             self.write_r16(Register::PC, addr);
@@ -1072,8 +1086,8 @@ impl SystemOnChip {
         self.write_r8(Register::A, next);
 
         self.flag_clear();
-        self.flag_set(FLAG_ZERO, self.read_r8(Register::A) == 0);
-        self.flag_set(FLAG_CARRY, prev > self.read_r8(Register::A));
+        self.flag_set(Flag::Zero, self.read_r8(Register::A) == 0);
+        self.flag_set(Flag::Carry, prev > self.read_r8(Register::A));
         // FIXME: How about half carry?
 
         self.set_proc_clock(8);
@@ -1179,10 +1193,10 @@ impl SystemOnChip {
         self.write_r8(Register::A, next);
 
         self.flag_clear();
-        self.flag_set(FLAG_ZERO, next == 0);
-        self.flag_set(FLAG_N, false);
-        self.flag_set(FLAG_HALF_CARRY, true);
-        self.flag_set(FLAG_CARRY, false);
+        self.flag_set(Flag::Zero, next == 0);
+        self.flag_set(Flag::N, false);
+        self.flag_set(Flag::HalfCarry, true);
+        self.flag_set(Flag::Carry, false);
 
         self.set_proc_clock(8);
     }
