@@ -2107,20 +2107,44 @@ impl SystemOnChip {
         }
 
         if (self.rb(0xFF40) & (1 << 1)) != 0 {
+            let tile_set_addr = 0x8000 as u16;
+
             for sprite in 0..40 {
                 let addr = 0xFE00 + 4 * sprite;
                 let sprite_screen_y = (self.rb(addr) as i16) - 16;
                 let sprite_screen_x = (self.rb(addr + 1) as i16) - 8;
+                let tile_id = self.rb(addr + 2) as u16;
+                let flags = self.rb(addr + 3);
 
                 let inside_of_line = sprite_screen_y <= (screen_y as i16) && (screen_y as i16) < (sprite_screen_y + 8);
                 if inside_of_line {
+
+                    let mut tile_addr_offset = 0 as u16;
+                    for _ in 0..16 {
+                        tile_addr_offset = tile_addr_offset.wrapping_add(tile_id);
+                    }
+                    let tile_addr = tile_set_addr.wrapping_add(tile_addr_offset);
+
                     // TODO: Palette
                     // TODO: Flip
                     for x in 0..8 {
                         let sx = sprite_screen_x + x;
                         if 0 <= sx && sx < 160 {
+                            // Tile set for sprite is #1
+                            let lx = x as u8;
+                            let ly = ((screen_y as i16) - sprite_screen_y) as u8;
+
+                            // 2 bytes consist of 1 line.
+                            let line_addr1 = tile_addr + (2 * ly as u16);
+                            let line_addr2 = line_addr1 + 1;
+
+                            let line_val1 = self.rb(line_addr1);
+                            let line_val2 = self.rb(line_addr2);
+                            let rlx = 7 - lx;
+                            let val = ((((line_val1 & (1 << rlx)) >> rlx) << 1) + ((line_val2 & (1 << rlx)) >> rlx)) as u8;
+
                             // TODO: Read value
-                            self.gpu_screen[(160 * (screen_y as u16) + (sx as u16)) as usize] = 1;
+                            self.gpu_screen[(160 * (screen_y as u16) + (sx as u16)) as usize] = val;
                         }
                     }
                 }
