@@ -367,7 +367,7 @@ impl SystemOnChip {
     // --
     // LD XY, d16
     // Affect: - - - -
-    // CPU Clock: -
+    // CPU Clock: 12
     // Bytes: 3
     fn ld_xy_d16(&mut self, x: Register, y: Register) -> () {
         let high = self.read_u8_pc();
@@ -376,7 +376,7 @@ impl SystemOnChip {
         // FIXME: little endian?
         self.write_r8(y, high);
         self.write_r8(x, low);
-
+        self.set_proc_clock(12);
     }
 
     // LD X, Y
@@ -462,7 +462,7 @@ impl SystemOnChip {
 
     // INC X
     // Affect: Z 0 H -
-    // CPU Clock: -
+    // CPU Clock: 4
     // Bytes: 1
     fn inc_x(&mut self, x: Register) -> () {
         let n = self.read_r8(x);
@@ -473,6 +473,7 @@ impl SystemOnChip {
         self.flag_set(FLAG_HALF_CARRY, (n & 0x0F) == 0x0F);
 
         self.write_r8(x, n.wrapping_add(1));
+        self.set_proc_clock(4);
     }
 
     // DEC X
@@ -492,12 +493,13 @@ impl SystemOnChip {
 
     // INC XY
     // Affect: - - - -
-    // CPU Clock: -
+    // CPU Clock: 8
     // Bytes: 2
     fn inc_xy(&mut self, x: Register, y: Register) -> () {
         let n = self.read_r16_2(x, y);
         let new_n = n.wrapping_add(1);
         self.write_r16_2(x, y, new_n);
+        self.set_proc_clock(8);
     }
 
     // DEC XY
@@ -644,37 +646,6 @@ impl SystemOnChip {
         self.set_proc_clock(4);
     }
 
-    // 0x01
-    // LD BC d16
-    // Affect: - - - -
-    // CPU Clock: 12
-    // Bytes: 3
-    fn ld_bc_d16(&mut self) -> () {
-        self.ld_xy_d16(Register::B, Register::C);
-        self.set_proc_clock(12);
-    }
-
-    // 0x03
-    // INC BC
-    // Affect: - - - -
-    // CPU Clock: 8
-    // Bytes 2
-    fn inc_bc(&mut self) -> () {
-        self.inc_xy(Register::B, Register::C);
-        self.set_proc_clock(8);
-    }
-
-    // 0x04
-    // INC B
-    // Affect: Z 0 H -
-    // CPU Clock 4
-    // Bytes 1
-    fn inc_b(&mut self) -> () {
-        self.inc_x(Register::B);
-        self.set_proc_clock(4);
-    }
-
-
     // 0x05
     // DEC B
     // Affect: Z 1 H -
@@ -705,16 +676,6 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
-    // 0x0C
-    // INC C
-    // Affect: Z 0 H -
-    // CPU Clock 4
-    // Bytes 1
-    fn inc_c(&mut self) -> () {
-        self.inc_x(Register::C);
-        self.set_proc_clock(4);
-    }
-
     // 0x0D
     // DEC C
     // Affect: Z 1 H -
@@ -733,36 +694,6 @@ impl SystemOnChip {
     fn ld_c_d8(&mut self) -> () {
         self.ld_x_d8(Register::C);
         self.set_proc_clock(8);
-    }
-
-    // 0x11
-    // LD DE, d16
-    // Affect: - - - -
-    // CPU Clock: 12
-    // Bytes: 3
-    fn ld_de_d16(&mut self) -> () {
-        self.ld_xy_d16(Register::D, Register::E);
-        self.set_proc_clock(12);
-    }
-
-    // 0x13
-    // INC DE
-    // Affect: - - - -
-    // CPU Clock: 8
-    // Bytes 2
-    fn inc_de(&mut self) -> () {
-        self.inc_xy(Register::D, Register::E);
-        self.set_proc_clock(8);
-    }
-
-    // 0x14
-    // INC D
-    // Affect: Z 0 H -
-    // CPU Clock 4
-    // Bytes 1
-    fn inc_d(&mut self) -> () {
-        self.inc_x(Register::D);
-        self.set_proc_clock(4);
     }
 
     // 0x15
@@ -824,16 +755,6 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
-    // 0x1C
-    // INC E
-    // Affect: Z 0 H -
-    // CPU Clock 4
-    // Bytes 1
-    fn inc_e(&mut self) -> () {
-        self.inc_x(Register::E);
-        self.set_proc_clock(4);
-    }
-
     // 0x1D
     // DEC D
     // Affect: Z 1 H -
@@ -864,16 +785,6 @@ impl SystemOnChip {
         self.jr_pred_r8(pred);
     }
 
-    // 0x21
-    // LD HL, d16
-    // Affect: - - - -
-    // CPU Clock: 12
-    // Bytes: 3
-    fn ld_hl_d16(&mut self) -> () {
-        self.ld_xy_d16(Register::H, Register::L);
-        self.set_proc_clock(12);
-    }
-
     // 0x22
     // LD (HL+),A
     // Affect: - - - -
@@ -885,26 +796,6 @@ impl SystemOnChip {
         let nhl = hl.wrapping_add(1);
         self.write_r16_2(Register::H, Register::L, nhl);
         self.set_proc_clock(8);
-    }
-
-    // 0x23
-    // INC HL
-    // Affect: - - - -
-    // CPU Clock: 8
-    // Bytes 2
-    fn inc_hl(&mut self) -> () {
-        self.inc_xy(Register::H, Register::L);
-        self.set_proc_clock(8);
-    }
-
-    // 0x24
-    // INC H
-    // Affect: Z 0 H -
-    // CPU Clock 4
-    // Bytes 1
-    fn inc_h(&mut self) -> () {
-        self.inc_x(Register::H);
-        self.set_proc_clock(4);
     }
 
     // 0x25
@@ -949,16 +840,6 @@ impl SystemOnChip {
         let nhl = hl.wrapping_add(1);
         self.write_r16_2(Register::H, Register::L, nhl);
         self.set_proc_clock(8);
-    }
-
-    // 0x2C
-    // INC L
-    // Affect: Z 0 H -
-    // CPU Clock 4
-    // Bytes 1
-    fn inc_l(&mut self) -> () {
-        self.inc_x(Register::L);
-        self.set_proc_clock(4);
     }
 
     // 0x2D
@@ -1020,16 +901,6 @@ impl SystemOnChip {
         let nhl = hl - 1;
         self.write_r16_2(Register::H, Register::L, nhl);
         self.set_proc_clock(8);
-    }
-
-    // 0x34
-    // INC A
-    // Affect: Z 0 H -
-    // CPU Clock 4
-    // Bytes 1
-    fn inc_a(&mut self) -> () {
-        self.inc_x(Register::A);
-        self.set_proc_clock(4);
     }
 
     // 0x35
@@ -2187,37 +2058,37 @@ impl SystemOnChip {
 
         match op {
             0x00 => self.nop(),
-            0x01 => self.ld_bc_d16(),
-            0x03 => self.inc_bc(),
-            0x04 => self.inc_b(),
+            0x01 => self.ld_xy_d16(Register::B, Register::C),
+            0x03 => self.inc_xy(Register::B, Register::C),
+            0x04 => self.inc_x(Register::B),
             0x05 => self.dec_b(),
             0x06 => self.ld_b_d8(),
             0x0A => self.ld_a_addr_bc(),
-            0x0C => self.inc_c(),
+            0x0C => self.inc_x(Register::C),
             0x0D => self.dec_c(),
             0x0E => self.ld_c_d8(),
-            0x11 => self.ld_de_d16(),
-            0x13 => self.inc_de(),
-            0x14 => self.inc_d(),
+            0x11 => self.ld_xy_d16(Register::D, Register::E),
+            0x13 => self.inc_xy(Register::D, Register::E),
+            0x14 => self.inc_x(Register::D),
             0x15 => self.dec_d(),
             0x16 => self.ld_d_d8(),
             0x17 => self.rla(),
             0x18 => self.jr_r8(),
             0x19 => self.add_hl_de(),
             0x1A => self.ld_a_addr_de(),
-            0x1C => self.inc_e(),
+            0x1C =>  self.inc_x(Register::E),
             0x1D => self.dec_e(),
             0x1E => self.ld_e_d8(),
             0x20 => self.jr_nz_r8(),
-            0x21 => self.ld_hl_d16(),
+            0x21 => self.ld_xy_d16(Register::H, Register::L),
             0x22 => self.ld_addr_hl_plus_a(),
-            0x23 => self.inc_hl(),
-            0x24 => self.inc_h(),
+            0x23 => self.inc_xy(Register::H, Register::L),
+            0x24 => self.inc_x(Register::H),
             0x25 => self.dec_h(),
             0x26 => self.ld_h_d8(),
             0x28 => self.jr_z_r8(),
             0x2A => self.ld_a_addr_hl_plus(),
-            0x2C => self.inc_l(),
+            0x2C => self.inc_x(Register::L),
             0x2D => self.dec_l(),
             0x2E => self.ld_l_d8(),
             0x2F => self.cpl(),
@@ -2225,7 +2096,7 @@ impl SystemOnChip {
             0x32 => self.ld_addr_hl_minus_a(),
             0x35 => self.dec_addr_hl(),
             0x36 => self.ld_addr_hl_d8(),
-            0x3C => self.inc_a(),
+            0x3C => self.inc_x(Register::A),
             0x3D => self.dec_a(),
             0x3E => self.ld_a_d8(),
             0x47 => self.ld_b_a(),
