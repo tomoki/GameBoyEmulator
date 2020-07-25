@@ -536,7 +536,7 @@ impl SystemOnChip {
 
     // SUB X
     // Affect: Z 1 H C
-    // CPU Clock: -
+    // CPU Clock: 4
     // Bytes: 1
     fn sub_x(&mut self, r: Register) -> () {
         let n = self.read_r8(Register::A);
@@ -547,7 +547,9 @@ impl SystemOnChip {
         self.flag_set(FLAG_ZERO, n == o);
         self.flag_set(FLAG_N, true);
 
-        // How about half carry and carry/
+        // FIXME: How about half carry and carry?
+
+        self.set_proc_clock(4);
     }
 
     // CP d8
@@ -972,64 +974,6 @@ impl SystemOnChip {
     // Bytes 1
     fn sub_b(&mut self) -> () {
         self.sub_x(Register::B);
-        self.set_proc_clock(4);
-    }
-
-    // 0x91
-    // SUB C
-    // Affect: Z 1 H C
-    // CPU Clock: 4
-    // Bytes 1
-    fn sub_c(&mut self) -> () {
-        self.sub_x(Register::C);
-        self.set_proc_clock(4);
-    }
-    // 0x92
-    // SUB D
-    // Affect: Z 1 H C
-    // CPU Clock: 4
-    // Bytes 1
-    fn sub_d(&mut self) -> () {
-        self.sub_x(Register::D);
-        self.set_proc_clock(4);
-    }
-    // 0x93
-    // SUB E
-    // Affect: Z 1 H C
-    // CPU Clock: 4
-    // Bytes 1
-    fn sub_e(&mut self) -> () {
-        self.sub_x(Register::E);
-        self.set_proc_clock(4);
-    }
-
-    // 0x94
-    // SUB H
-    // Affect: Z 1 H C
-    // CPU Clock: 4
-    // Bytes 1
-    fn sub_h(&mut self) -> () {
-        self.sub_x(Register::H);
-        self.set_proc_clock(4);
-    }
-
-    // 0x95
-    // SUB L
-    // Affect: Z 1 H C
-    // CPU Clock: 4
-    // Bytes 1
-    fn sub_l(&mut self) -> () {
-        self.sub_x(Register::L);
-        self.set_proc_clock(4);
-    }
-
-    // 0x97
-    // SUB A
-    // Affect: Z 1 H C
-    // CPU Clock: 4
-    // Bytes 1
-    fn sub_a(&mut self) -> () {
-        self.sub_x(Register::A);
         self.set_proc_clock(4);
     }
 
@@ -1921,13 +1865,13 @@ impl SystemOnChip {
             0x7F => self.ld_x_y(Register::A, Register::A),
             0x80 => self.add_a_b(),
             0x86 => self.add_addr_hl(),
-            0x90 => self.sub_b(),
-            0x91 => self.sub_c(),
-            0x92 => self.sub_d(),
-            0x93 => self.sub_e(),
-            0x94 => self.sub_h(),
-            0x95 => self.sub_l(),
-            0x97 => self.sub_a(),
+            0x90 => self.sub_x(Register::B),
+            0x91 => self.sub_x(Register::C),
+            0x92 => self.sub_x(Register::D),
+            0x93 => self.sub_x(Register::E),
+            0x94 => self.sub_x(Register::H),
+            0x95 => self.sub_x(Register::L),
+            0x97 => self.sub_x(Register::A),
             0xA0 => self.and_b(),
             0xAF => self.xor_a(),
             0xB0 => self.or_b(),
