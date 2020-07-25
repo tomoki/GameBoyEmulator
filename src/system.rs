@@ -475,6 +475,17 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
+    // LD X, (YZ)
+    // Affect - - - -
+    // CPU Clock: 8
+    // Bytes: 1
+    fn ld_x_addr_yz(&mut self, x: Register, y: Register, z: Register) -> () {
+        let addr = self.read_r16_2(y, z);
+        let val = self.rb(addr);
+        self.write_r8(x, val);
+        self.set_proc_clock(8);
+    }
+
     // INC X
     // Affect: Z 0 H -
     // CPU Clock: 4
@@ -974,16 +985,6 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
-    // 0x1A
-    // LD A, (HL)
-    // Affect: - - - -
-    // CPU Clock: 8
-    // Bytes 1
-    fn ld_a_addr_hl(&mut self) -> () {
-        self.ld_a_addr_xy(Register::H, Register::L);
-        self.set_proc_clock(8);
-    }
-
     // 0x86
     // ADD A, (HL)
     // Affect: Z 0 H C
@@ -1140,6 +1141,26 @@ impl SystemOnChip {
     fn push_de(&mut self) -> () {
         self.push_xy(Register::D, Register::E);
         self.set_proc_clock(16);
+    }
+
+    // 0xD6
+    // SUB A, d8
+    // Affect: Z 1 H C
+    // CPU Clock: 8
+    // Bytes: 2
+    fn sub_a_d8(&mut self) -> () {
+        let prev = self.read_r8(Register::A);
+        let n = self.read_u8_pc();
+        let next = prev.wrapping_sub(n);
+        self.write_r8(Register::A, next);
+
+        self.flag_clear();
+        self.flag_set(Flag::Zero, next == 0);
+        self.flag_set(Flag::N, true);
+        self.flag_set(Flag::Carry, prev > self.read_r8(Register::A));
+        // FIXME: How about half carry?
+
+        self.set_proc_clock(8);
     }
 
     // 0xD9
@@ -1822,7 +1843,7 @@ impl SystemOnChip {
             0x43 => self.ld_x_y(Register::B, Register::E),
             0x44 => self.ld_x_y(Register::B, Register::H),
             0x45 => self.ld_x_y(Register::B, Register::L),
-            0x46 => unimplemented!(),
+            0x46 => self.ld_x_addr_yz(Register::B, Register::H, Register::L),
             0x47 => self.ld_x_y(Register::B, Register::A),
             0x48 => self.ld_x_y(Register::C, Register::B),
             0x49 => self.ld_x_y(Register::C, Register::C),
@@ -1830,7 +1851,7 @@ impl SystemOnChip {
             0x4B => self.ld_x_y(Register::C, Register::E),
             0x4C => self.ld_x_y(Register::C, Register::H),
             0x4D => self.ld_x_y(Register::C, Register::L),
-            0x4E => unimplemented!(),
+            0x4E => self.ld_x_addr_yz(Register::C, Register::H, Register::L),
             0x4F => self.ld_x_y(Register::C, Register::A),
             0x50 => self.ld_x_y(Register::D, Register::B),
             0x51 => self.ld_x_y(Register::D, Register::C),
@@ -1838,7 +1859,7 @@ impl SystemOnChip {
             0x53 => self.ld_x_y(Register::D, Register::E),
             0x54 => self.ld_x_y(Register::D, Register::H),
             0x55 => self.ld_x_y(Register::D, Register::L),
-            0x56 => unimplemented!(),
+            0x56 => self.ld_x_addr_yz(Register::D, Register::H, Register::L),
             0x57 => self.ld_x_y(Register::D, Register::A),
             0x58 => self.ld_x_y(Register::E, Register::B),
             0x59 => self.ld_x_y(Register::E, Register::C),
@@ -1846,7 +1867,7 @@ impl SystemOnChip {
             0x5B => self.ld_x_y(Register::E, Register::E),
             0x5C => self.ld_x_y(Register::E, Register::H),
             0x5D => self.ld_x_y(Register::E, Register::L),
-            0x5E => unimplemented!(),
+            0x5E => self.ld_x_addr_yz(Register::E, Register::H, Register::L),
             0x5F => self.ld_x_y(Register::E, Register::A),
             0x60 => self.ld_x_y(Register::H, Register::B),
             0x61 => self.ld_x_y(Register::H, Register::C),
@@ -1854,7 +1875,7 @@ impl SystemOnChip {
             0x63 => self.ld_x_y(Register::H, Register::E),
             0x64 => self.ld_x_y(Register::H, Register::H),
             0x65 => self.ld_x_y(Register::H, Register::L),
-            0x66 => unimplemented!(),
+            0x66 => self.ld_x_addr_yz(Register::H, Register::H, Register::L),
             0x67 => self.ld_x_y(Register::H, Register::A),
             0x68 => self.ld_x_y(Register::L, Register::B),
             0x69 => self.ld_x_y(Register::L, Register::C),
@@ -1862,7 +1883,7 @@ impl SystemOnChip {
             0x6B => self.ld_x_y(Register::L, Register::E),
             0x6C => self.ld_x_y(Register::L, Register::H),
             0x6D => self.ld_x_y(Register::L, Register::L),
-            0x6E => unimplemented!(),
+            0x6E => self.ld_x_addr_yz(Register::L, Register::H, Register::L),
             0x6F => self.ld_x_y(Register::L, Register::A),
             0x70 => self.ld_addr_hl_b(),
             0x71 => self.ld_addr_hl_c(),
@@ -1878,7 +1899,7 @@ impl SystemOnChip {
             0x7B => self.ld_x_y(Register::A, Register::E),
             0x7C => self.ld_x_y(Register::A, Register::H),
             0x7D => self.ld_x_y(Register::A, Register::L),
-            0x7E => self.ld_a_addr_hl(),
+            0x7E => self.ld_x_addr_yz(Register::A, Register::H, Register::L),
             0x7F => self.ld_x_y(Register::A, Register::A),
             0x80 => self.add_a_x(Register::B),
             0x81 => self.add_a_x(Register::C),
@@ -1966,7 +1987,7 @@ impl SystemOnChip {
             0xD3 => unimplemented!(),
             0xD4 => self.call_pred_a16(Flag::Carry, false),
             0xD5 => self.push_de(),
-            0xD6 => unimplemented!(),
+            0xD6 => self.sub_a_d8(),
             0xD7 => unimplemented!(),
             0xD8 => unimplemented!(),
             0xD9 => self.reti(),
