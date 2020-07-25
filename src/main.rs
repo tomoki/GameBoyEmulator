@@ -55,10 +55,42 @@ fn main() {
         let mut window: PistonWindow = WindowSettings::new("Gameboy emulator", [160 * scale, 144 * scale]).exit_on_esc(true).build().unwrap();
 
         while let Some(event) = window.next() {
-
             match event {
-                Event::Input(_, _) => {
-
+                Event::Input(i, _) => {
+                    match i {
+                        Input::Button(args) => {
+                            match args.button {
+                                Button::Keyboard(Key::Right) => {
+                                    match args.state {
+                                        ButtonState::Press => soc.set_button_right(true),
+                                        ButtonState::Release => soc.set_button_right(false)
+                                    }
+                                }
+                                Button::Keyboard(Key::Left) => {
+                                    match args.state {
+                                        ButtonState::Press => soc.set_button_left(true),
+                                        ButtonState::Release => soc.set_button_left(false)
+                                    }
+                                }
+                                Button::Keyboard(Key::Up) => {
+                                    match args.state {
+                                        ButtonState::Press => soc.set_button_up(true),
+                                        ButtonState::Release => soc.set_button_up(false)
+                                    }
+                                }
+                                Button::Keyboard(Key::Down) => {
+                                    match args.state {
+                                        ButtonState::Press => soc.set_button_down(true),
+                                        ButtonState::Release => soc.set_button_down(false)
+                                    }
+                                }
+                                _ => {
+                                }
+                            }
+                        },
+                        _ => {
+                        }
+                    }
                 },
                 Event::Loop(l) => {
                     match l {

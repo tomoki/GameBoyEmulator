@@ -1,4 +1,3 @@
-
 // Helper functions
 // Expand u8 to u16, but for signed operations if the first bit is 1
 // then fill the first byte with 1.
@@ -135,6 +134,33 @@ impl InterruptFlag {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+struct Joypad {
+    a: bool,
+    b: bool,
+    left: bool,
+    right: bool,
+    up: bool,
+    down: bool,
+    start: bool,
+    select: bool,
+}
+
+impl Joypad {
+    pub fn new() -> Joypad {
+        Joypad {
+            a: false,
+            b: false,
+            left: false,
+            right: false,
+            up: false,
+            down: false,
+            start: false,
+            select: false,
+        }
+    }
+}
+
 const VRAM_START : u16 = 0x8000;
 const VRAM_END : u16 = 0x9FFF;
 const INTERNAL_RAM_START : u16 = 0xC000;
@@ -162,6 +188,7 @@ pub struct SystemOnChip {
     interruption_enabled: InterruptFlag,
     interruption_occurred: InterruptFlag,
     interruption_occurred_in_this_step: InterruptFlag,
+    joypad: Joypad,
 
     // memory
     // 0x8000 - 0x9FFF
@@ -1809,8 +1836,27 @@ impl SystemOnChip {
                             match addr {
                                 // P1
                                 0xFF00 => {
-                                    // TODO: eprintln!("Implement joypad");
-                                    self.mapped_io[(addr - MAPPED_IO_START) as usize]
+                                    let setting = self.mapped_io[(addr - MAPPED_IO_START) as usize];
+                                    let p14 = (setting & (1 << 4)) != 0;
+                                    let p15 = (setting & (1 << 5)) != 0;
+
+                                    if p14 {
+                                        let p10_bit = if self.joypad.a { 0 } else { 1 };
+                                        let p11_bit = if self.joypad.b { 0 } else { 1 };
+                                        let p12_bit = if self.joypad.select { 0 } else { 1 };
+                                        let p13_bit = if self.joypad.start { 0 } else { 1 };
+
+                                        p10_bit | (p11_bit << 1) | (p12_bit << 2) | (p13_bit << 3)
+                                    } else if p15 {
+                                        let p10_bit = if self.joypad.right { 0 } else { 1 };
+                                        let p11_bit = if self.joypad.left { 0 } else { 1 };
+                                        let p12_bit = if self.joypad.up { 0 } else { 1 };
+                                        let p13_bit = if self.joypad.down { 0 } else { 1 };
+
+                                        p10_bit | (p11_bit << 1) | (p12_bit << 2) | (p13_bit << 3)
+                                    } else {
+                                        0x0F
+                                    }
                                 },
                                 // TAC
                                 0xFF03 => {
@@ -2098,6 +2144,7 @@ impl SystemOnChip {
             interruption_enabled: InterruptFlag::new(),
             interruption_occurred: InterruptFlag::new(),
             interruption_occurred_in_this_step: InterruptFlag::new(),
+            joypad: Joypad::new(),
 
             read_from_bios: true,
             vram: [0; VRAM_SIZE as usize],
@@ -2373,6 +2420,7 @@ impl SystemOnChip {
                 let inside_of_line = sprite_screen_y <= (screen_y as i16) && (screen_y as i16) < (sprite_screen_y + 8);
                 if inside_of_line {
 
+                    // eprintln!("{} {}", sprite_screen_x, sprite_screen_y);
                     let mut tile_addr_offset = 0 as u16;
                     for _ in 0..16 {
                         tile_addr_offset = tile_addr_offset.wrapping_add(tile_id);
@@ -2507,6 +2555,30 @@ impl SystemOnChip {
 
     pub fn screen(&mut self) -> [u8; 160 * 144] {
         self.gpu_screen
+    }
+
+    pub fn set_button_a(&mut self, pressed: bool) -> () {
+        self.joypad.a = pressed;
+    }
+
+    pub fn set_button_b(&mut self, pressed: bool) -> () {
+        self.joypad.b = pressed;
+    }
+
+    pub fn set_button_left(&mut self, pressed: bool) -> () {
+        self.joypad.left = pressed;
+    }
+
+    pub fn set_button_right(&mut self, pressed: bool) -> () {
+        self.joypad.right = pressed;
+    }
+
+    pub fn set_button_up(&mut self, pressed: bool) -> () {
+        self.joypad.up = pressed;
+    }
+
+    pub fn set_button_down(&mut self, pressed: bool) -> () {
+        self.joypad.down = pressed;
     }
 
     // debug functions
