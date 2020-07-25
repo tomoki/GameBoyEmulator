@@ -977,16 +977,6 @@ impl SystemOnChip {
         self.set_proc_clock(4);
     }
 
-    // 0xA0
-    // AND B
-    // Affect: Z 0 1 0
-    // CPU Clock: 4
-    // Bytes: 1
-    fn and_b(&mut self) -> () {
-        self.and_x(Register::B);
-        self.set_proc_clock(4);
-    }
-
     // 0xAF
     // XOR A
     // Affect: Z 0 0 0
@@ -1872,7 +1862,14 @@ impl SystemOnChip {
             0x94 => self.sub_x(Register::H),
             0x95 => self.sub_x(Register::L),
             0x97 => self.sub_x(Register::A),
-            0xA0 => self.and_b(),
+            0xA0 => self.and_x(Register::B),
+            0xA1 => self.and_x(Register::C),
+            0xA2 => self.and_x(Register::D),
+            0xA3 => self.and_x(Register::E),
+            0xA4 => self.and_x(Register::H),
+            0xA5 => self.and_x(Register::L),
+            0xA6 => unimplemented!(),
+            0xA7 => self.and_x(Register::A),
             0xAF => self.xor_a(),
             0xB0 => self.or_b(),
             0xBE => self.cp_addr_hl(),
