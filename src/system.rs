@@ -583,7 +583,7 @@ impl SystemOnChip {
         let prev_a = self.read_r8(Register::A);
         let app = self.read_r8(r);
         let res = prev_a | app;
-        self.write_r8(r, res);
+        self.write_r8(Register::A, res);
 
         self.flag_clear();
         self.flag_set(FLAG_ZERO, res == 0);
@@ -598,7 +598,7 @@ impl SystemOnChip {
         let prev_a = self.read_r8(Register::A);
         let app = self.read_r8(r);
         let res = prev_a & app;
-        self.write_r8(r, res);
+        self.write_r8(Register::A, res);
 
         self.flag_clear();
         self.flag_set(FLAG_ZERO, res == 0);
