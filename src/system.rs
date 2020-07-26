@@ -482,6 +482,22 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
+    // RR X
+    // Affect: Z 0 0 C
+    // CPU Clock: 8
+    // Bytes: 2
+    fn rr_x(&mut self, x: Register) -> () {
+        let prev = self.read_r8(x);
+        let carry = self.flag_is_set(Flag::Carry);
+        let next = (prev >> 1) | (if carry { 1 << 7 } else { 0 });
+
+        self.flag_clear();
+        self.flag_set(Flag::Zero, next == 0);
+        self.flag_set(Flag::Carry, prev & 1 != 0);
+
+        self.set_proc_clock(8);
+    }
+
     // LD A, (XY)
     // Affect - - - -
     // CPU Clock: 8
@@ -824,6 +840,16 @@ impl SystemOnChip {
     // Bytes: 2
     fn ld_e_d8(&mut self) -> () {
         self.ld_x_d8(Register::E);
+        self.set_proc_clock(8);
+    }
+
+    // RR A
+    // Affect: Z 0 0 C
+    // CPU Clock: 4
+    // Bytes: 1
+    fn rra(&mut self) -> () {
+        self.rr_x(Register::A);
+        // Overwrite proc clock
         self.set_proc_clock(8);
     }
 
@@ -1845,7 +1871,7 @@ impl SystemOnChip {
             0x1C => self.inc_x(Register::E),
             0x1D => self.dec_x(Register::E),
             0x1E => self.ld_e_d8(),
-            0x1F => unimplemented!(),
+            0x1F => self.rra(),
             0x20 => self.jr_nz_r8(),
             0x21 => self.ld_xy_d16(Register::H, Register::L),
             0x22 => self.ld_addr_hl_plus_a(),
@@ -2076,6 +2102,14 @@ impl SystemOnChip {
                 let op = self.read_u8_pc();
                 match op {
                     0x11 => self.rl_c(),
+                    0x18 => self.rr_x(Register::B),
+                    0x19 => self.rr_x(Register::C),
+                    0x1A => self.rr_x(Register::D),
+                    0x1B => self.rr_x(Register::E),
+                    0x1C => self.rr_x(Register::H),
+                    0x1D => self.rr_x(Register::L),
+                    0x1E => unimplemented!(),
+                    0x1F => self.rr_x(Register::A),
                     0x23 => self.sla_e(),
                     0x27 => self.sla_a(),
                     0x37 => self.swap_a(),
