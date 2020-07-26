@@ -573,26 +573,6 @@ impl SystemOnChip {
         self.write_r16_2(x, y, new_n);
     }
 
-    // JR PRED, r8
-    // Affect: - - - -
-    // CPU Clock: 12/8
-    // Bytes: 2
-    fn jr_pred_r8(&mut self, pred: bool) -> () {
-        // relative_addr is signed.
-        let relative_addr = self.read_u8_pc();
-
-        if pred {
-            // Note that as u16 add 0 to the head, but as relative_addr is signed,
-            // we manually add 1 if it means negative value.
-            let relative_addr_16 = expand_to_u16_retaining_sign(relative_addr);
-            let addr = self.read_r16(Register::PC).wrapping_add(relative_addr_16);
-            self.write_r16(Register::PC, addr);
-            self.set_proc_clock(12);
-        } else {
-            self.set_proc_clock(8);
-        }
-    }
-
     // CALL PRED, a16
     // Affect: - - - -
     // CPU Clock: 24/12
@@ -607,6 +587,27 @@ impl SystemOnChip {
             self.set_proc_clock(24);
         } else {
             self.set_proc_clock(12);
+        }
+    }
+
+    // JR PRED, a16
+    // Affect: - - - -
+    // CPU Clock: 12/8
+    // Bytes: 2
+    fn jr_pred_r8(&mut self, flag: Flag, positive: bool) -> () {
+        // relative_addr is signed.
+        let relative_addr = self.read_u8_pc();
+        let should_jump = if self.flag_is_set(flag) { positive } else { !positive };
+
+        if should_jump {
+            // Note that as u16 add 0 to the head, but as relative_addr is signed,
+            // we manually add 1 if it means negative value.
+            let relative_addr_16 = expand_to_u16_retaining_sign(relative_addr);
+            let addr = self.read_r16(Register::PC).wrapping_add(relative_addr_16);
+            self.write_r16(Register::PC, addr);
+            self.set_proc_clock(12);
+        } else {
+            self.set_proc_clock(8);
         }
     }
 
@@ -820,7 +821,15 @@ impl SystemOnChip {
     // CPU Clock: 8
     // Bytes: 2
     fn jr_r8(&mut self) -> () {
-        self.jr_pred_r8(true);
+        // relative_addr is signed.
+        let relative_addr = self.read_u8_pc();
+
+        // Note that as u16 add 0 to the head, but as relative_addr is signed,
+        // we manually add 1 if it means negative value.
+        let relative_addr_16 = expand_to_u16_retaining_sign(relative_addr);
+        let addr = self.read_r16(Register::PC).wrapping_add(relative_addr_16);
+        self.write_r16(Register::PC, addr);
+        self.set_proc_clock(8);
     }
 
     // 0x1A
@@ -853,16 +862,6 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
-    // 0x20
-    // JR NZ, r8
-    // Affect: - - - -
-    // CPU Clock: 12/8
-    // Bytes: 2
-    fn jr_nz_r8(&mut self) -> () {
-        let pred = !self.flag_is_set(Flag::Zero);
-        self.jr_pred_r8(pred);
-    }
-
     // 0x22
     // LD (HL+),A
     // Affect: - - - -
@@ -884,17 +883,6 @@ impl SystemOnChip {
     fn ld_h_d8(&mut self) -> () {
         self.ld_x_d8(Register::H);
         self.set_proc_clock(8);
-    }
-
-    // 0x28
-    // 0x20
-    // JR NZ, r8
-    // Affect: - - - -
-    // CPU Clock: 12/8
-    // Bytes: 2
-    fn jr_z_r8(&mut self) -> () {
-        let pred = self.flag_is_set(Flag::Zero);
-        self.jr_pred_r8(pred);
     }
 
     // 0x2A
@@ -1872,7 +1860,7 @@ impl SystemOnChip {
             0x1D => self.dec_x(Register::E),
             0x1E => self.ld_e_d8(),
             0x1F => self.rra(),
-            0x20 => self.jr_nz_r8(),
+            0x20 => self.jr_pred_r8(Flag::Zero, false),
             0x21 => self.ld_xy_d16(Register::H, Register::L),
             0x22 => self.ld_addr_hl_plus_a(),
             0x23 => self.inc_xy(Register::H, Register::L),
@@ -1880,7 +1868,7 @@ impl SystemOnChip {
             0x25 => self.dec_x(Register::H),
             0x26 => self.ld_h_d8(),
             0x27 => unimplemented!(),
-            0x28 => self.jr_z_r8(),
+            0x28 => self.jr_pred_r8(Flag::Zero, true),
             0x29 => self.add_wx_yz(Register::H, Register::L, Register::H, Register::L),
             0x2A => self.ld_a_addr_hl_plus(),
             0x2B => unimplemented!(),
@@ -1888,7 +1876,7 @@ impl SystemOnChip {
             0x2D => self.dec_x(Register::L),
             0x2E => self.ld_l_d8(),
             0x2F => self.cpl(),
-            0x30 => unimplemented!(),
+            0x30 => self.jr_pred_r8(Flag::Carry, false),
             0x31 => self.ld_sp_d16(),
             0x32 => self.ld_addr_hl_minus_a(),
             0x33 => unimplemented!(),
@@ -1896,7 +1884,7 @@ impl SystemOnChip {
             0x35 => self.dec_addr_hl(),
             0x36 => self.ld_addr_hl_d8(),
             0x37 => unimplemented!(),
-            0x38 => unimplemented!(),
+            0x38 => self.jr_pred_r8(Flag::Carry, true),
             0x39 => unimplemented!(),
             0x3A => unimplemented!(),
             0x3B => unimplemented!(),
