@@ -751,10 +751,15 @@ impl SystemOnChip {
         self.set_proc_clock(4);
     }
 
-    // SRL X
-    // Affect: Z 0 0 C
+    // LD (XY), Z
+    // Affect - - - -
     // CPU Clock: 8
-    // Bytes 2
+    // Bytes: 1
+    fn ld_addr_xy_z(&mut self, x: Register, y: Register, z: Register) -> () {
+        let addr = self.read_r16_2(x, y);
+        self.wb(addr, self.read_r8(z));
+        self.set_proc_clock(8);
+    }
 
     // actual functions
 
@@ -989,39 +994,6 @@ impl SystemOnChip {
     // Bytes: 2
     fn ld_a_d8(&mut self) -> () {
         self.ld_x_d8(Register::A);
-        self.set_proc_clock(8);
-    }
-
-    // 0x70
-    // LD (HL), B
-    // Affect - - - -
-    // CPU Clock: 8
-    // Bytes: 1
-    fn ld_addr_hl_b(&mut self) -> () {
-        let addr = self.read_r16_2(Register::H, Register::L);
-        self.wb(addr, self.read_r8(Register::B));
-        self.set_proc_clock(8);
-    }
-
-    // 0x71
-    // LD (HL), C
-    // Affect - - - -
-    // CPU Clock: 8
-    // Bytes: 1
-    fn ld_addr_hl_c(&mut self) -> () {
-        let addr = self.read_r16_2(Register::H, Register::L);
-        self.wb(addr, self.read_r8(Register::C));
-        self.set_proc_clock(8);
-    }
-
-    // 0x77
-    // LD (HL), A
-    // Affect - - - -
-    // CPU Clock: 8
-    // Bytes: 1
-    fn ld_addr_hl_a(&mut self) -> () {
-        let addr = self.read_r16_2(Register::H, Register::L);
-        self.wb(addr, self.read_r8(Register::A));
         self.set_proc_clock(8);
     }
 
@@ -1599,7 +1571,6 @@ impl SystemOnChip {
                                 },
                                 _ => {
                                     unimplemented!("Read of Memory-mapped IO ${:04X?} is not implemented", addr);
-                                    0
                                 }
                             }
                         }
@@ -1614,16 +1585,15 @@ impl SystemOnChip {
                     },
                     _ => {
                         unimplemented!();
-                        0
                     }
                 }
             }
             _ => {
                 unimplemented!();
-                0
             }
         }
     }
+
     fn rw(&mut self, addr: u16) -> u16 {
         (self.rb(addr) as u16) | ((self.rb(addr+1) as u16) << 8)
     }
@@ -1823,7 +1793,7 @@ impl SystemOnChip {
         match op {
             0x00 => self.nop(),
             0x01 => self.ld_xy_d16(Register::B, Register::C),
-            0x02 => unimplemented!(),
+            0x02 => self.ld_addr_xy_z(Register::B, Register::C, Register::A),
             0x03 => self.inc_xy(Register::B, Register::C),
             0x04 => self.inc_x(Register::B),
             0x05 => self.dec_x(Register::B),
@@ -1839,7 +1809,7 @@ impl SystemOnChip {
             0x0F => unimplemented!(),
             0x10 => unimplemented!(),
             0x11 => self.ld_xy_d16(Register::D, Register::E),
-            0x12 => unimplemented!(),
+            0x12 => self.ld_addr_xy_z(Register::D, Register::E, Register::A),
             0x13 => self.inc_xy(Register::D, Register::E),
             0x14 => self.inc_x(Register::D),
             0x15 => self.dec_x(Register::D),
@@ -1933,14 +1903,14 @@ impl SystemOnChip {
             0x6D => self.ld_x_y(Register::L, Register::L),
             0x6E => self.ld_x_addr_yz(Register::L, Register::H, Register::L),
             0x6F => self.ld_x_y(Register::L, Register::A),
-            0x70 => self.ld_addr_hl_b(),
-            0x71 => self.ld_addr_hl_c(),
-            0x72 => unimplemented!(),
-            0x73 => unimplemented!(),
-            0x74 => unimplemented!(),
-            0x75 => unimplemented!(),
-            0x76 => unimplemented!(),
-            0x77 => self.ld_addr_hl_a(),
+            0x70 => self.ld_addr_xy_z(Register::H, Register::L, Register::B),
+            0x71 => self.ld_addr_xy_z(Register::H, Register::L, Register::C),
+            0x72 => self.ld_addr_xy_z(Register::H, Register::L, Register::D),
+            0x73 => self.ld_addr_xy_z(Register::H, Register::L, Register::E),
+            0x74 => self.ld_addr_xy_z(Register::H, Register::L, Register::H),
+            0x75 => self.ld_addr_xy_z(Register::H, Register::L, Register::L),
+            0x76 => unimplemented!(), // HALT
+            0x77 => self.ld_addr_xy_z(Register::H, Register::L, Register::A),
             0x78 => self.ld_x_y(Register::A, Register::B),
             0x79 => self.ld_x_y(Register::A, Register::C),
             0x7A => self.ld_x_y(Register::A, Register::D),
