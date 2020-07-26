@@ -464,6 +464,24 @@ impl SystemOnChip {
         self.write_r8(x, next);
     }
 
+    // SRL X
+    // Affect: Z 0 0 C
+    // CPU Clock: 8
+    // Bytes: 2
+    fn srl_x(&mut self, x: Register) -> () {
+        let prev = self.read_r8(x);
+        let next = prev >> 1;
+        let has_carry = (prev & 1) != 0;
+
+        self.flag_set(Flag::Zero, next == 0);
+        self.flag_set(Flag::N, false);
+        self.flag_set(Flag::HalfCarry, false);
+        self.flag_set(Flag::Carry, has_carry);
+
+        self.write_r8(x, next);
+        self.set_proc_clock(8);
+    }
+
     // LD A, (XY)
     // Affect - - - -
     // CPU Clock: 8
@@ -713,6 +731,11 @@ impl SystemOnChip {
 
         self.set_proc_clock(4);
     }
+
+    // SRL X
+    // Affect: Z 0 0 C
+    // CPU Clock: 8
+    // Bytes 2
 
     // actual functions
 
@@ -2056,6 +2079,14 @@ impl SystemOnChip {
                     0x23 => self.sla_e(),
                     0x27 => self.sla_a(),
                     0x37 => self.swap_a(),
+                    0x38 => self.srl_x(Register::B),
+                    0x39 => self.srl_x(Register::C),
+                    0x3A => self.srl_x(Register::D),
+                    0x3B => self.srl_x(Register::E),
+                    0x3C => self.srl_x(Register::H),
+                    0x3D => self.srl_x(Register::L),
+                    0x3E => unimplemented!(),
+                    0x3F => self.srl_x(Register::A),
                     0x47 => self.bit_n_x(0, Register::A),
                     0x5F => self.bit_n_x(3, Register::A),
                     0x67 => self.bit_n_x(4, Register::A),
