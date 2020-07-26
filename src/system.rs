@@ -445,6 +445,8 @@ impl SystemOnChip {
         self.flag_set(Flag::Carry, (n & (1 << 7)) != 0);
 
         self.write_r8(x, (n << 1) | (if old_carry_flag { 1 } else { 0 }));
+
+        self.set_proc_clock(8);
     }
 
     // SLA X
@@ -812,6 +814,7 @@ impl SystemOnChip {
     // Bytes: 1
     fn rla(&mut self) -> () {
         self.rl_x(Register::A);
+        // Overwrite clock
         self.set_proc_clock(4);
     }
 
@@ -1398,16 +1401,6 @@ impl SystemOnChip {
 
     // Prefix CB instructions
     // BIT functions are not listed here.
-
-    // 0xCB 0x11
-    // RL C
-    // Affect: Z 0 0 C
-    // CPU Clock: 8
-    // Bytes: 2
-    fn rl_c(&mut self) -> () {
-        self.rl_x(Register::C);
-        self.set_proc_clock(8);
-    }
 
     // 0xCB 0x23
     // SLA E
@@ -2089,7 +2082,14 @@ impl SystemOnChip {
                 let pc = self.read_r16(Register::PC);
                 let op = self.read_u8_pc();
                 match op {
-                    0x11 => self.rl_c(),
+                    0x10 => self.rl_x(Register::B),
+                    0x11 => self.rl_x(Register::C),
+                    0x12 => self.rl_x(Register::D),
+                    0x13 => self.rl_x(Register::E),
+                    0x14 => self.rl_x(Register::H),
+                    0x15 => self.rl_x(Register::L),
+                    0x16 => unimplemented!(),
+                    0x17 => self.rl_x(Register::A),
                     0x18 => self.rr_x(Register::B),
                     0x19 => self.rr_x(Register::C),
                     0x1A => self.rr_x(Register::D),
