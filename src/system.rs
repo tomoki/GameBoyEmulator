@@ -1325,6 +1325,17 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
+    // 0xE9
+    // JP HL
+    // Affect: - - - -
+    // CPU Clock: 4
+    // Bytes: 1
+    fn jp_hl(&mut self) -> () {
+        let addr = self.read_r16_2(Register::H, Register::L);
+        self.write_r16(Register::PC, addr);
+        self.set_proc_clock(4);
+    }
+
     // 0xEA
     // LD (nn), A
     // Affect: - - - -
@@ -1335,6 +1346,24 @@ impl SystemOnChip {
         self.wb(addr, self.read_r8(Register::A));
         self.set_proc_clock(16);
     }
+
+    // 0xEE
+    // XOR d8
+    // Affect: Z 0 0 0
+    // CPU Clock: 16
+    // Bytes: 3
+    fn xor_d8(&mut self) -> () {
+        let prev = self.read_r8(Register::A);
+        let val = self.read_u8_pc();
+        let next = prev ^ val;
+        self.write_r8(Register::A, next);
+
+        self.flag_clear();
+        self.flag_set(Flag::Zero, next == 0);
+
+        self.set_proc_clock(4);
+    }
+
 
     // 0xF0
     // LDH A, (n) = LD A, ($FF00 + n)
@@ -2088,12 +2117,12 @@ impl SystemOnChip {
             0xE6 => self.and_d8(),
             0xE7 => unimplemented!(),
             0xE8 => unimplemented!(),
-            0xE9 => unimplemented!(),
+            0xE9 => self.jp_hl(),
             0xEA => self.ld_addr_d16_a(),
             0xEB => unimplemented!(),
             0xEC => unimplemented!(),
             0xED => unimplemented!(),
-            0xEE => unimplemented!(),
+            0xEE => self.xor_d8(),
             0xEF => unimplemented!(),
             0xF0 => self.ldh_a_addr_d8(),
             0xF1 => self.pop_af(),
@@ -2436,7 +2465,6 @@ impl SystemOnChip {
                 let cyclespent2 = self.get_proc_clock();
                 self.gpu_step(cyclespent2);
                 cyclespent += cyclespent2;
-
                 self.set_proc_clock(0);
             }
         }
