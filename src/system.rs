@@ -1050,6 +1050,25 @@ impl SystemOnChip {
         self.set_proc_clock(8);
     }
 
+    // 0xB6
+    // OR (HL)
+    // Affect: Z 0 0 0 0
+    // CPU Clock: 8
+    // Bytes: 1
+    fn or_addr_hl(&mut self) -> () {
+        let addr = self.read_r16_2(Register::H, Register::L);
+        let app = self.rb(addr);
+
+        let prev_a = self.read_r8(Register::A);
+        let res = prev_a | app;
+        self.write_r8(Register::A, res);
+
+        self.flag_clear();
+        self.flag_set(Flag::Zero, res == 0);
+
+        self.set_proc_clock(8);
+    }
+
     // 0xBE
     // CP (HL)
     // Affect: Z 1 H C
@@ -2018,7 +2037,7 @@ impl SystemOnChip {
             0xB3 => self.or_x(Register::E),
             0xB4 => self.or_x(Register::H),
             0xB5 => self.or_x(Register::L),
-            0xB6 => unimplemented!(),
+            0xB6 => self.or_addr_hl(),
             0xB7 => self.or_x(Register::A),
             0xB8 => unimplemented!(),
             0xB9 => unimplemented!(),
