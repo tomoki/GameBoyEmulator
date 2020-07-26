@@ -592,6 +592,22 @@ impl SystemOnChip {
         }
     }
 
+    // RET PRED
+    // Affect: - - - -
+    // CPU Clock: 20/8
+    // Bytes: 1
+    fn ret_pred(&mut self, flag: Flag, positive: bool) -> () {
+        let should_jump = if self.flag_is_set(flag) { positive } else { !positive };
+
+        if should_jump {
+            let addr = self.pop_u16();
+            self.write_r16(Register::PC, addr);
+            self.set_proc_clock(20);
+        } else {
+            self.set_proc_clock(8);
+        }
+    }
+
     // JR PRED, a16
     // Affect: - - - -
     // CPU Clock: 12/8
@@ -1153,6 +1169,27 @@ impl SystemOnChip {
         self.set_proc_clock(12);
     }
 
+    // 0xCE
+    // ADC A, d8
+    // Affect: Z 0 H C
+    // CPU Clock: 8
+    // Bytes: 2
+    fn adc_a_d8(&mut self) -> () {
+        let prev = self.read_r8(Register::A);
+        let val = self.read_u8_pc();
+        let c = if self.flag_is_set(Flag::Carry) { 1 } else { 0 };
+
+        let next = prev.wrapping_add(val).wrapping_add(c);
+
+        self.write_r8(Register::A, next);
+
+        // FIXME: Implement flags
+        self.flag_set(Flag::Zero, next == 0);
+        self.flag_set(Flag::N, false);
+
+        self.set_proc_clock(8);
+    }
+
     // 0xD1
     // POP DE
     // Affect: - - - -
@@ -1626,6 +1663,14 @@ impl SystemOnChip {
                                 0xFF00 => {
                                     self.mapped_io[(addr - MAPPED_IO_START) as usize] = val;
                                 },
+                                // SB
+                                0xFF01 => {
+                                    eprintln!("{}", val);
+                                },
+                                // SC
+                                0xFF02 => {
+                                    eprintln!("SC is not implemented");
+                                }
                                 // TAC
                                 0xFF07 => {
                                     self.mapped_io[(addr - MAPPED_IO_START) as usize] = val;
@@ -1983,7 +2028,7 @@ impl SystemOnChip {
             0xBD => unimplemented!(),
             0xBE => self.cp_addr_hl(),
             0xBF => unimplemented!(),
-            0xC0 => unimplemented!(),
+            0xC0 => self.ret_pred(Flag::Zero, false),
             0xC1 => self.pop_bc(),
             0xC2 => self.jp_nz_d16(),
             0xC3 => self.jp_d16(),
@@ -1991,15 +2036,15 @@ impl SystemOnChip {
             0xC5 => self.push_bc(),
             0xC6 => self.add_a_d8(),
             0xC7 => unimplemented!(),
-            0xC8 => unimplemented!(),
+            0xC8 => self.ret_pred(Flag::Zero, true),
             0xC9 => self.ret(),
             0xCA => self.jp_z_d16(),
             // 0xCB is Prefix function.
             0xCC => self.call_pred_a16(Flag::Zero, true),
             0xCD => self.call_a16(),
-            0xCE => unimplemented!(),
+            0xCE => self.adc_a_d8(),
             0xCF => unimplemented!(),
-            0xD0 => unimplemented!(),
+            0xD0 => self.ret_pred(Flag::Carry, false),
             0xD1 => self.pop_de(),
             0xD2 => unimplemented!(),
             0xD3 => unimplemented!(),
@@ -2007,7 +2052,7 @@ impl SystemOnChip {
             0xD5 => self.push_de(),
             0xD6 => self.sub_a_d8(),
             0xD7 => unimplemented!(),
-            0xD8 => unimplemented!(),
+            0xD8 => self.ret_pred(Flag::Carry, true),
             0xD9 => self.reti(),
             0xDA => unimplemented!(),
             0xDB => unimplemented!(),
@@ -2175,7 +2220,7 @@ impl SystemOnChip {
         let scroll_y = self.rb(0xFF42);
         let scroll_x = self.rb(0xFF43);
 
-        let buffer_y = line + scroll_y;
+        let buffer_y = line.wrapping_add(scroll_y);
 
         // Background rendering
         if (self.rb(0xFF40) & (1 << 0)) != 0 {
