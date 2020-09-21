@@ -5,6 +5,7 @@ use std::io;
 
 mod system;
 use piston_window::*;
+use ::image::{RgbaImage, Rgba};
 
 fn read_data(filename: &str) -> io::Result<Vec<u8>> {
     use std::io::Read;
@@ -23,6 +24,7 @@ fn read_data(filename: &str) -> io::Result<Vec<u8>> {
 }
 
 fn main() {
+
     let args: Vec<String> = env::args().collect();
     let mut soc = system::SystemOnChip::new();
 
@@ -52,7 +54,19 @@ fn main() {
         }
 
         let scale = 4;
-        let mut window: PistonWindow = WindowSettings::new("Gameboy emulator", [160 * scale, 144 * scale]).exit_on_esc(true).build().unwrap();
+        let mut window: PistonWindow = WindowSettings::new("Gameboy emulator", [160 * scale, 144 * scale]).exit_on_esc(true).samples(0).resizable(false).build().unwrap();
+
+        let mut texture_context = TextureContext {
+            factory: window.factory.clone(),
+            encoder: window.factory.create_command_buffer().into()
+        };
+
+        let mut screen_image = RgbaImage::new(160, 144);
+        let mut screen_texture = Texture::from_image(
+            &mut texture_context,
+            &screen_image,
+            &TextureSettings::new().filter(piston_window::Filter::Nearest)
+        ).unwrap();
 
         while let Some(event) = window.next() {
             match event {
@@ -120,26 +134,27 @@ fn main() {
                     match l {
                         Loop::Render(args) => {
                             let screen_data = soc.screen();
-                            window.draw_2d(&event, | context, graphics, _device | {
-                                clear([0.6; 4], graphics);
-                                for y in 0..144 {
-                                    for x in 0..160 {
-                                        let v = screen_data[160 * y + x];
-                                        let c = match v {
-                                            0 => [1.0, 1.0, 1.0, 1.0],
-                                            1 => [0.666, 0.666, 0.666, 1.0],
-                                            2 => [0.333, 0.333, 0.333, 1.0],
-                                            3 => [0.0, 0.0, 0.0, 1.0],
-                                            _ => unreachable!()
-                                        };
-                                        let lx = (x as u32 * scale) as f64;
-                                        let rx = ((x as u32 + 1) * scale) as f64;
-                                        let uy = (y as u32 * scale) as f64;
-                                        let dy = ((y as u32 + 1) * scale) as f64;
-
-                                        rectangle(c, [lx, uy, rx, dy], context.transform, graphics)
-                                    }
+                            // Update texture data
+                            for y in 0..144 {
+                                for x in 0..160 {
+                                    let v = screen_data[160 * y + x];
+                                    let c = match v {
+                                        0 => Rgba([255, 255, 255, 255]),
+                                        1 => Rgba([170, 170, 170, 255]),
+                                        2 => Rgba([85, 85, 85, 255]),
+                                        3 => Rgba([0, 0, 0, 255]),
+                                        _ => unreachable!()
+                                    };
+                                    screen_image.put_pixel(x as u32, y as u32, c);
                                 }
+                            }
+                            screen_texture.update(&mut texture_context, &screen_image).unwrap();
+
+                            window.draw_2d(&event, | context, graphics, device | {
+                                // Flush all the changes into the texture
+                                texture_context.encoder.flush(device);
+                                clear([0.6; 4], graphics);
+                                image(&screen_texture, context.transform.scale(scale as f64, scale as f64), graphics);
                             });
                         },
                         Loop::Update(args) => {
