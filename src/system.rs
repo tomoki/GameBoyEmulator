@@ -2309,11 +2309,7 @@ impl SystemOnChip {
                     false => tile_id as u16,
                 };
                 // 16 bytes per 1 tile.
-                // FIXME: Can we use wrapping_mul?
-                let mut tile_addr_offset = 0 as u16;
-                for _ in 0..16 {
-                    tile_addr_offset = tile_addr_offset.wrapping_add(tile_id_u16);
-                }
+                let tile_addr_offset = tile_id_u16.wrapping_mul(16) as u16;
                 let tile_addr = tile_set_addr.wrapping_add(tile_addr_offset);
                 assert!(0x8000 <= tile_addr && tile_addr <= 0x97FF);
 
